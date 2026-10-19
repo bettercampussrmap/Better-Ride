@@ -17,6 +17,7 @@ import { SlotWithDetails, Message } from '../../types/database';
 import { formatTime12, formatDateForDisplay, formatMessageTime } from '../../lib/date-utils';
 import { useToast } from '../ui/Toast';
 import { toValidUuid, isValidUuid } from '../../lib/uuid-utils';
+import { fetchMessagesForSlot, postMessageToSlot } from '../../lib/rides-service';
 
 interface SlotChatModalProps {
   slot: SlotWithDetails | null;
@@ -83,27 +84,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
     // 1. Fetch existing messages for this slot
     const fetchMessages = async () => {
       try {
-        let loadedMessages: Message[] = [];
-        const { data, error: fetchErr } = await supabase
-          .from('messages')
-          .select('*, profile:profiles(id, display_name, email, avatar_url)')
-          .eq('slot_id', slot.id)
-          .order('created_at', { ascending: true });
-
-        if (!fetchErr && data) {
-          loadedMessages = data as Message[];
-        } else {
-          // Fallback simple query without relation join
-          const { data: simpleData } = await supabase
-            .from('messages')
-            .select('*')
-            .eq('slot_id', slot.id)
-            .order('created_at', { ascending: true });
-          if (simpleData) {
-            loadedMessages = simpleData as Message[];
-          }
-        }
-
+        const loadedMessages = await fetchMessagesForSlot(slot.id);
         if (isMounted) {
           setMessages(loadedMessages);
           setTimeout(scrollToBottom, 100);
@@ -217,66 +198,18 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
       return;
     }
 
-    const supabase = getSupabase();
-    if (!supabase) {
-      setSending(false);
-      return;
-    }
-
     try {
-      const finalUserId = isValidUuid(currentUserId) ? currentUserId : toValidUuid(currentUserId);
-      const newLocalMsg: Message = {
-        id: `msg-${Date.now()}`,
-        slot_id: slot.id,
-        user_id: finalUserId,
-        content: trimmed,
-        created_at: new Date().toISOString(),
-        profile: {
-          id: finalUserId,
-          display_name: 'You',
-          email: null,
-          avatar_url: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      };
-
-      // Try simple insert without forcing foreign key select join
-      const { data, error: insertError } = await supabase
-        .from('messages')
-        .insert({
-          slot_id: slot.id,
-          user_id: finalUserId,
-          content: trimmed,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        console.warn('Supabase message insert notice, saving locally:', insertError);
-        // Fallback locally
-        setMessages((prev) => [...prev, newLocalMsg]);
-        const existingLocal = localStorage.getItem(`local_chat_${slot.id}`);
-        const parsed = existingLocal ? JSON.parse(existingLocal) : [];
-        localStorage.setItem(`local_chat_${slot.id}`, JSON.stringify([...parsed, newLocalMsg]));
-        setInputText('');
-        setTimeout(scrollToBottom, 50);
-      } else {
-        setInputText('');
-        if (data) {
-          const formatted: Message = {
-            ...(data as any),
-            profile: newLocalMsg.profile,
-          };
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === formatted.id)) return prev;
-            return [...prev, formatted];
-          });
-          setTimeout(scrollToBottom, 50);
-        }
+      const saved = await postMessageToSlot(slot.id, currentUserId, trimmed);
+      if (saved) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === saved.id)) return prev;
+          return [...prev, saved];
+        });
       }
+      setInputText('');
+      setTimeout(scrollToBottom, 50);
     } catch (err: any) {
-      console.warn('Send message error, local fallback used:', err);
+      console.warn('Send message error:', err);
     } finally {
       setSending(false);
       textareaRef.current?.focus();

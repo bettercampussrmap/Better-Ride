@@ -61,7 +61,7 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
       </div>
 
       {/* Progress Stepper */}
-      <ProgressStepper currentStep={4} />
+      <ProgressStepper currentStep={3} />
 
       {/* Heading Section */}
       <div className="space-y-0.5 pt-0.5">
@@ -127,7 +127,7 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
           <div className="flex items-center justify-between text-[11px] pt-0.5">
             <span className="flex items-center gap-1 text-[#09090B] font-semibold">
               <MapPin className="w-3 h-3 text-[#71717A]" />
-              <span className="truncate max-w-[170px]">{bestMatchRide.pickup_point || selectedPickup}</span>
+              <span className="truncate max-w-[170px]">SRM AP Gate 3</span>
             </span>
             <span className="font-semibold text-[#09090B] flex items-center gap-1">
               <ShieldCheck className="w-3 h-3 text-[#22C55E]" />

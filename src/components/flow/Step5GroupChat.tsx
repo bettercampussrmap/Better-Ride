@@ -35,43 +35,55 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Load real messages & subscribe to Supabase Realtime channel
+  // Load real messages & subscribe to Supabase Realtime channel + fast polling
   useEffect(() => {
     if (!ride) return;
     let isMounted = true;
     setLoading(true);
 
-    fetchMessagesForSlot(ride.id).then((msgs) => {
-      if (isMounted) {
-        setMessages(msgs);
-        setLoading(false);
+    const loadFreshMessages = async () => {
+      try {
+        const msgs = await fetchMessagesForSlot(ride.id);
+        if (isMounted) {
+          setMessages(msgs);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) setLoading(false);
       }
-    });
+    };
 
+    loadFreshMessages();
+
+    // 1. Supabase Postgres Realtime listener
     const supabase = getSupabase();
+    let channel: any = null;
     if (supabase) {
-      const channel = supabase
+      channel = supabase
         .channel(`realtime_chat_${ride.id}`)
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages', filter: `slot_id=eq.${ride.id}` },
-          async (payload) => {
-            const newMsg = payload.new as Message;
-            // Fetch message with profile
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
-            });
-            setTimeout(scrollToBottom, 50);
+          { event: '*', schema: 'public', table: 'messages', filter: `slot_id=eq.${ride.id}` },
+          () => {
+            loadFreshMessages();
+            setTimeout(scrollToBottom, 60);
           }
         )
         .subscribe();
-
-      return () => {
-        isMounted = false;
-        supabase.removeChannel(channel);
-      };
     }
+
+    // 2. Continuous 2.5-second polling to guarantee instant synchronization across all devices
+    const pollInterval = setInterval(() => {
+      loadFreshMessages();
+    }, 2500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+      if (supabase && channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [ride]);
 
   useEffect(() => {
@@ -93,7 +105,7 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
       created_at: new Date().toISOString(),
       profile: {
         id: currentUserId,
-        display_name: userName,
+        display_name: userName || 'You',
         email: null,
         avatar_url: null,
         created_at: new Date().toISOString(),
@@ -104,11 +116,12 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
     setMessages((prev) => [...prev, optimisticMsg]);
     setTimeout(scrollToBottom, 50);
 
-    const saved = await postMessageToSlot(ride.id, currentUserId, text);
+    const saved = await postMessageToSlot(ride.id, currentUserId, text, userName);
     if (saved) {
       setMessages((prev) =>
         prev.map((m) => (m.id === optimisticMsg.id ? saved : m))
       );
+      setTimeout(scrollToBottom, 50);
     }
   };
 

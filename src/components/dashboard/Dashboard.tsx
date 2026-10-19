@@ -167,7 +167,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleStartFindRide = (dest?: string) => {
     if (dest) setDestination(dest);
-    setFlowScreen('flow_step1');
+    setFlowScreen('flow_step2');
   };
 
   const handleOpenRideDetails = (ride: SlotWithDetails) => {
@@ -296,11 +296,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {flowScreen === 'flow_step2' && (
               <Step2TimeSelection
                 destination={destination}
+                onDestinationChange={setDestination}
                 selectedDate={selectedDate}
+                onDateChange={setSelectedDate}
                 selectedTimeInterval={selectedTimeInterval}
                 onSelectInterval={setSelectedTimeInterval}
                 existingSlots={rides}
-                onBack={() => setFlowScreen('flow_step1')}
+                onBack={() => setFlowScreen('home_main')}
                 onProceed={() => setFlowScreen('flow_step3')}
               />
             )}
@@ -395,16 +397,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
         myRidesCount={myUpcomingRides.length}
       />
 
-      {/* 4. Universal Join & Create Group Options Modal (Max 12 members) */}
+      {/* 4. Universal Join & Create Group Options Modal */}
       <JoinGroupModal
         isOpen={actionModalOpen}
         onClose={() => setActionModalOpen(false)}
         mode={actionModalMode}
-        slot={targetSlotForModal}
+        slot={targetSlotForModal || (actionModalMode === 'join' ? bestMatchRide : null)}
         initialDestination={destination}
         initialDate={selectedDate}
         initialTimeInterval={selectedTimeInterval}
-        initialPickup={selectedPickup}
         onConfirm={handleConfirmRideAction}
         isSubmitting={isSubmittingAction}
       />

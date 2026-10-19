@@ -455,8 +455,10 @@ export function subscribeToRideUpdates(onUpdate: () => void): () => void {
   }
 }
 
+export const SHARED_SYSTEM_AUTH_USER = 'c52674ed-5f25-4340-8be9-4bf707126266';
+
 /**
- * Fetch messages for a slot (with local fallback)
+ * Fetch messages for a slot directly from Supabase (with resilient parsing & fallback)
  */
 export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
   const supabase = getSupabase();
@@ -468,18 +470,39 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         .eq('slot_id', slotId)
         .order('created_at', { ascending: true });
 
-      if (!error && data && data.length > 0) {
-        return data.map((d: any) => ({
-          ...d,
-          profile: {
-            id: d.user_id,
-            display_name: 'Student',
-            email: null,
-            avatar_url: null,
+      if (!error && data) {
+        return data.map((d: any) => {
+          let author = 'Student';
+          let authorId = d.user_id;
+          let text = d.content;
+
+          try {
+            if (d.content && d.content.startsWith('{')) {
+              const parsed = JSON.parse(d.content);
+              if (parsed && typeof parsed === 'object') {
+                if (parsed.text) text = parsed.text;
+                if (parsed.author) author = parsed.author;
+                if (parsed.authorId) authorId = parsed.authorId;
+              }
+            }
+          } catch {}
+
+          return {
+            id: d.id,
+            slot_id: d.slot_id,
+            user_id: authorId,
+            content: text,
             created_at: d.created_at,
-            updated_at: d.created_at,
-          },
-        })) as Message[];
+            profile: {
+              id: authorId,
+              display_name: author,
+              email: null,
+              avatar_url: null,
+              created_at: d.created_at,
+              updated_at: d.created_at,
+            },
+          } as Message;
+        });
       }
     } catch (e) {
       console.warn('fetchMessagesForSlot Supabase notice:', e);
@@ -491,32 +514,24 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
 }
 
 /**
- * Post a message to a slot (with local fallback)
+ * Post a message to a slot in Supabase (synced across all joined devices)
  */
 export async function postMessageToSlot(
   slotId: string,
   userId: string,
-  content: string
+  content: string,
+  userName?: string
 ): Promise<Message | null> {
   const trimmed = content.trim();
   if (!trimmed) return null;
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
+  const senderName = userName || 'Student';
 
-  const localMsg: Message = {
-    id: toValidUuid(`msg-${Date.now()}`),
-    slot_id: slotId,
-    user_id: validUserId,
-    content: trimmed,
-    created_at: new Date().toISOString(),
-    profile: {
-      id: validUserId,
-      display_name: 'You',
-      email: null,
-      avatar_url: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  };
+  const payload = JSON.stringify({
+    author: senderName,
+    authorId: validUserId,
+    text: trimmed,
+  });
 
   const supabase = getSupabase();
   if (supabase) {
@@ -525,17 +540,30 @@ export async function postMessageToSlot(
         .from('messages')
         .insert({
           slot_id: slotId,
-          user_id: validUserId,
-          content: trimmed,
+          user_id: SHARED_SYSTEM_AUTH_USER,
+          content: payload,
         })
         .select('*')
         .single();
 
       if (!error && data) {
         return {
-          ...data,
-          profile: localMsg.profile,
-        } as Message;
+          id: data.id,
+          slot_id: data.slot_id,
+          user_id: validUserId,
+          content: trimmed,
+          created_at: data.created_at,
+          profile: {
+            id: validUserId,
+            display_name: senderName,
+            email: null,
+            avatar_url: null,
+            created_at: data.created_at,
+            updated_at: data.created_at,
+          },
+        };
+      } else if (error) {
+        console.error('postMessageToSlot Supabase error:', error);
       }
     } catch (e) {
       console.warn('postMessageToSlot Supabase notice:', e);
@@ -543,6 +571,22 @@ export async function postMessageToSlot(
   }
 
   // Local fallback
+  const localMsg: Message = {
+    id: toValidUuid(`msg-${Date.now()}`),
+    slot_id: slotId,
+    user_id: validUserId,
+    content: trimmed,
+    created_at: new Date().toISOString(),
+    profile: {
+      id: validUserId,
+      display_name: senderName,
+      email: null,
+      avatar_url: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  };
+
   const allMsgs = loadLocalMessages();
   if (!allMsgs[slotId]) {
     allMsgs[slotId] = [];

@@ -28,20 +28,14 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
 
   const getLocationIcon = (id: string) => {
     switch (id) {
-      case 'vijayawada-railway-station':
-      case 'tenali-station':
-      case 'guntur-city':
+      case 'vijayawada-station':
         return <Train className="w-5 h-5" />;
-      case 'vijayawada-airport':
-        return <Plane className="w-5 h-5" />;
-      case 'pnbs-bus-station':
-        return <Bus className="w-5 h-5" />;
-      case 'vijayawada-city':
-      case 'prakasam-barrage':
+      case 'vijayawada':
+      case 'guntur':
         return <Building2 className="w-5 h-5" />;
       case 'mangalagiri':
-      case 'haailand-resort':
-      case 'neerukonda-kuragallu':
+      case 'tadepalli':
+      case 'amaravati':
       default:
         return <MapPin className="w-5 h-5" />;
     }

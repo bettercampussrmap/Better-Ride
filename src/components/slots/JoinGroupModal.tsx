@@ -3,19 +3,22 @@ import {
   X,
   Users,
   Clock,
-  MapPin,
-  Check,
-  Sparkles,
-  MessageSquare,
-  AlertCircle,
+  Calendar,
+  Lock,
   ChevronRight,
-  Car,
   Plus,
-  Minus,
 } from 'lucide-react';
 import { SlotWithDetails } from '../../types/database';
-import { formatTime12, getTodayISTDateString, getOffsetISTDateString } from '../../lib/date-utils';
-import { CAMPUS_DESTINATIONS, CAMPUS_PICKUP_POINTS, PREDEFINED_INTERVALS, MAX_GROUP_MEMBERS } from '../../lib/constants';
+import {
+  formatTime12,
+  getTodayISTDateString,
+  getOffsetISTDateString,
+  formatDateShortPill,
+} from '../../lib/date-utils';
+import {
+  CAMPUS_DESTINATIONS,
+  PREDEFINED_INTERVALS,
+} from '../../lib/constants';
 
 export interface RideActionOptions {
   slotId?: string;
@@ -23,8 +26,6 @@ export interface RideActionOptions {
   departureDate: string;
   startTime: string;
   endTime: string;
-  pickupPoint: string;
-  pickupNote: string;
   targetSize: number;
   ridePref: string;
 }
@@ -37,7 +38,6 @@ interface JoinGroupModalProps {
   initialDestination?: string;
   initialDate?: string;
   initialTimeInterval?: { startTime: string; endTime: string };
-  initialPickup?: string;
   onConfirm?: (options: RideActionOptions) => Promise<void>;
   onConfirmJoin?: (options: { targetSize: number; pickupNote: string }) => Promise<void>;
   isSubmitting?: boolean;
@@ -50,23 +50,23 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
   onClose,
   mode = 'join',
   slot,
-  initialDestination = 'Mangalagiri',
+  initialDestination = 'Vijayawada',
   initialDate,
   initialTimeInterval,
-  initialPickup = 'SRM AP Gate 3',
   onConfirm,
   onConfirmJoin,
   isSubmitting = false,
   isJoining = false,
-  existingJoinedSlot,
 }) => {
   const isCreate = mode === 'create' || !slot;
   const isPending = isSubmitting || isJoining;
+  const todayStr = getTodayISTDateString();
+  const tomorrowStr = getOffsetISTDateString(1);
 
   // Form state
   const [destination, setDestination] = useState(slot?.destination || initialDestination);
   const [departureDate, setDepartureDate] = useState(
-    slot?.departure_date || initialDate || getTodayISTDateString()
+    slot?.departure_date || initialDate || todayStr
   );
   const [startTime, setStartTime] = useState(
     slot?.start_time || initialTimeInterval?.startTime || '10:00:00'
@@ -74,15 +74,8 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
   const [endTime, setEndTime] = useState(
     slot?.end_time || initialTimeInterval?.endTime || '10:30:00'
   );
-  const [pickupPoint, setPickupPoint] = useState(
-    slot?.pickup_point || initialPickup || 'SRM AP Gate 3'
-  );
-  const [pickupNote, setPickupNote] = useState(slot?.members?.[0]?.pickup_note || '');
-  const [targetSize, setTargetSize] = useState<number>(() => {
-    if (slot?.target_size) return Math.min(MAX_GROUP_MEMBERS, Math.max(2, slot.target_size));
-    return 4;
-  });
   const [ridePref, setRidePref] = useState<string>(slot?.ride_type || 'auto');
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Sync state whenever modal opens or slot changes
   useEffect(() => {
@@ -91,8 +84,7 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
       setDepartureDate(slot.departure_date);
       setStartTime(slot.start_time);
       setEndTime(slot.end_time);
-      setPickupPoint(slot.pickup_point || 'SRM AP Gate 3');
-      setTargetSize(Math.min(MAX_GROUP_MEMBERS, Math.max(2, slot.target_size || 4)));
+      setRidePref(slot.ride_type || 'auto');
     } else {
       if (initialDestination) setDestination(initialDestination);
       if (initialDate) setDepartureDate(initialDate);
@@ -100,43 +92,10 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
         setStartTime(initialTimeInterval.startTime);
         setEndTime(initialTimeInterval.endTime);
       }
-      if (initialPickup) setPickupPoint(initialPickup);
     }
-  }, [slot, initialDestination, initialDate, initialTimeInterval, initialPickup, isOpen]);
+  }, [slot, initialDestination, initialDate, initialTimeInterval, isOpen]);
 
   if (!isOpen) return null;
-
-  const quickLandmarks = [
-    'Gate 3 Security Cabin',
-    'Near Campus ATM',
-    'Hostel Gate',
-    'Admin Block',
-  ];
-
-  const allowedSizes = [3, 4, 6, 8, 10, 12];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const finalSize = Math.min(MAX_GROUP_MEMBERS, Math.max(2, targetSize));
-    if (onConfirm) {
-      await onConfirm({
-        slotId: slot?.id,
-        destination,
-        departureDate,
-        startTime,
-        endTime,
-        pickupPoint,
-        pickupNote: pickupNote.trim(),
-        targetSize: finalSize,
-        ridePref,
-      });
-    } else if (onConfirmJoin) {
-      await onConfirmJoin({
-        targetSize: finalSize,
-        pickupNote: pickupNote.trim(),
-      });
-    }
-  };
 
   const handleTimeSelect = (val: string) => {
     const match = PREDEFINED_INTERVALS.find((i) => i.startTime === val);
@@ -153,14 +112,37 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (onConfirm) {
+      await onConfirm({
+        slotId: slot?.id,
+        destination,
+        departureDate,
+        startTime,
+        endTime,
+        targetSize: 4,
+        ridePref,
+      });
+    } else if (onConfirmJoin) {
+      await onConfirmJoin({
+        targetSize: 4,
+        pickupNote: 'SRM AP Gate 3',
+      });
+    }
+  };
+
+  const isToday = departureDate === todayStr;
+  const isTomorrow = departureDate === tomorrowStr;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div
-        className="bg-white w-full max-w-[400px] rounded-2xl shadow-xl border border-[#E4E4E7] max-h-[90vh] flex flex-col overflow-hidden text-[#09090B] animate-in zoom-in-95 duration-150"
+        className="bg-white w-full max-w-[380px] rounded-2xl shadow-xl border border-[#E4E4E7] flex flex-col overflow-hidden text-[#09090B] animate-in zoom-in-95 duration-150"
         role="dialog"
         aria-modal="true"
       >
-        {/* Header - Compact */}
+        {/* Modal Header */}
         <div className="px-4 py-3 border-b border-[#E4E4E7] flex items-center justify-between shrink-0 bg-[#FAFAF8]">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-[#09090B] text-white flex items-center justify-center font-bold text-xs shrink-0">
@@ -168,10 +150,10 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-[#09090B] tracking-tight">
-                {isCreate ? 'Create Ride Group' : 'Join for a Ride'}
+                {isCreate ? 'Create Ride Group' : 'Join Ride Pool'}
               </h3>
               <p className="text-[10px] text-[#71717A]">
-                {isCreate ? 'Set up options & invite peers' : `Group: ${destination}`}
+                {isCreate ? 'Start a pool for your peers to join' : `Group to ${destination}`}
               </p>
             </div>
           </div>
@@ -186,57 +168,143 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 overflow-y-auto space-y-3.5 text-xs">
-          {/* Destination */}
-          <div>
-            <label className="block text-[11px] font-bold text-[#09090B] mb-1">
-              Destination
-            </label>
-            {isCreate ? (
-              <select
-                value={destination}
-                onChange={(e) => setDestination(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-semibold text-[#09090B] outline-none"
-              >
-                {CAMPUS_DESTINATIONS.map((d) => (
-                  <option key={d.id} value={d.name}>
-                    {d.name} ({d.approxDistance})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="px-3 py-2 rounded-xl bg-[#F4F4F5] border border-[#E4E4E7] font-bold text-[#09090B] flex items-center justify-between">
-                <span>{destination}</span>
-                <span className="text-[10px] text-[#71717A] font-medium">{slot?.departure_date}</span>
-              </div>
-            )}
-          </div>
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-4 space-y-3.5 text-xs">
+          {/* JOIN MODE: LOCKED IMMUTABLE DETAILS */}
+          {!isCreate && (
+            <div className="space-y-2.5">
+              <div className="p-3 bg-[#F4F4F5] rounded-xl border border-[#E4E4E7] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-bold text-[#71717A] uppercase tracking-wider">
+                    TARGET DESTINATION
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#71717A]">
+                    <Lock className="w-3 h-3 text-[#A1A1AA]" />
+                    <span>Fixed</span>
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-[#09090B]">{destination}</h4>
 
-          {/* Date & Time if creating */}
+                <div className="pt-1 border-t border-[#E4E4E7] flex items-center justify-between text-[11px] text-[#71717A]">
+                  <span className="flex items-center gap-1 font-semibold text-[#09090B]">
+                    <Clock className="w-3.5 h-3.5 text-[#71717A]" />
+                    <span>
+                      {formatTime12(startTime)} – {formatTime12(endTime)}
+                    </span>
+                  </span>
+                  <span className="font-medium">{formatDateShortPill(departureDate)}</span>
+                </div>
+              </div>
+
+              {/* Waiting List status */}
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-white border border-[#E4E4E7] shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-bold text-[#09090B]">
+                    {slot?.memberCount || 1} student{(slot?.memberCount || 1) > 1 ? 's' : ''} in pool
+                  </span>
+                </div>
+                <span className="text-[10px] font-medium text-[#71717A]">
+                  Main Gate Pickup
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* CREATE MODE: MINIMAL CLEAN INPUTS */}
           {isCreate && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-3">
+              {/* Destination Selector (6 allowed locations) */}
               <div>
                 <label className="block text-[11px] font-bold text-[#09090B] mb-1">
-                  Date
+                  Destination
                 </label>
-                <input
-                  type="date"
-                  value={departureDate}
-                  min={getTodayISTDateString()}
-                  onChange={(e) => setDepartureDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-medium text-[#09090B] outline-none"
-                />
+                <select
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-semibold text-[#09090B] outline-none"
+                >
+                  {CAMPUS_DESTINATIONS.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name} ({d.approxDistance})
+                    </option>
+                  ))}
+                </select>
               </div>
 
+              {/* Date Selection */}
               <div>
                 <label className="block text-[11px] font-bold text-[#09090B] mb-1">
-                  Departure Time
+                  Departure Date
+                </label>
+                <div className="grid grid-cols-3 gap-1 bg-[#F4F4F5] p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDepartureDate(todayStr);
+                      setShowDatePicker(false);
+                    }}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isToday && !showDatePicker
+                        ? 'bg-[#09090B] text-white shadow-xs'
+                        : 'text-[#71717A] hover:text-[#09090B]'
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDepartureDate(tomorrowStr);
+                      setShowDatePicker(false);
+                    }}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isTomorrow && !showDatePicker
+                        ? 'bg-[#09090B] text-white shadow-xs'
+                        : 'text-[#71717A] hover:text-[#09090B]'
+                    }`}
+                  >
+                    Tomorrow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDatePicker((prev) => !prev)}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                      (!isToday && !isTomorrow) || showDatePicker
+                        ? 'bg-[#09090B] text-white shadow-xs'
+                        : 'text-[#71717A] hover:text-[#09090B]'
+                    }`}
+                  >
+                    <Calendar className="w-3 h-3" />
+                    <span>Select</span>
+                  </button>
+                </div>
+
+                {showDatePicker && (
+                  <input
+                    type="date"
+                    value={departureDate}
+                    min={todayStr}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setDepartureDate(e.target.value);
+                        setShowDatePicker(false);
+                      }
+                    }}
+                    className="w-full mt-1.5 px-3 py-1.5 rounded-xl bg-[#F4F4F5] border border-[#E4E4E7] text-xs font-semibold text-[#09090B] outline-none"
+                  />
+                )}
+              </div>
+
+              {/* Time Window Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#09090B] mb-1">
+                  Departure Time Slot
                 </label>
                 <select
                   value={startTime}
                   onChange={(e) => handleTimeSelect(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-medium text-[#09090B] outline-none"
+                  className="w-full px-3 py-2 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-semibold text-[#09090B] outline-none"
                 >
                   {PREDEFINED_INTERVALS.filter((i) => {
                     const h = parseInt(i.startTime.split(':')[0], 10);
@@ -251,123 +319,38 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
             </div>
           )}
 
-          {/* Group Member Limit (Maximum 12 members) */}
-          <div className="space-y-1.5 bg-[#F4F4F5] p-3 rounded-xl border border-[#E4E4E7]">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-[#09090B] block">
-                  Member Limit (Max 12)
-                </span>
-                <span className="text-[10px] text-[#71717A]">
-                  Capacity limit for this pool: up to {MAX_GROUP_MEMBERS} members
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTargetSize((prev) => Math.max(2, prev - 1))}
-                  disabled={targetSize <= 2}
-                  className="w-6 h-6 rounded-lg bg-white border border-[#E4E4E7] hover:bg-gray-100 flex items-center justify-center text-[#09090B] disabled:opacity-40 cursor-pointer"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
-                <span className="w-6 text-center font-extrabold text-sm text-[#09090B]">
-                  {targetSize}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setTargetSize((prev) => Math.min(MAX_GROUP_MEMBERS, prev + 1))}
-                  disabled={targetSize >= MAX_GROUP_MEMBERS}
-                  className="w-6 h-6 rounded-lg bg-white border border-[#E4E4E7] hover:bg-gray-100 flex items-center justify-center text-[#09090B] disabled:opacity-40 cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-
-            {/* Quick chips for sizes up to 12 */}
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {allowedSizes.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setTargetSize(s)}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
-                    targetSize === s
-                      ? 'bg-[#09090B] text-white border-[#09090B]'
-                      : 'bg-white text-[#71717A] border-[#E4E4E7] hover:text-[#09090B]'
-                  }`}
-                >
-                  {s} seats {s === 12 ? '(Max)' : ''}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Vehicle / Ride Preference */}
+          {/* Vehicle Preference (Clean 2-button toggle) */}
           <div>
             <label className="block text-[11px] font-bold text-[#09090B] mb-1">
-              Vehicle Preference
+              Vehicle Type
             </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { id: 'auto', label: '🛺 Auto' },
-                { id: 'cab', label: '🚕 Cab' },
-                { id: 'shuttle', label: '🚐 Van' },
-                { id: 'any', label: '✨ Any' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setRidePref(opt.id)}
-                  className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border text-center transition-all cursor-pointer ${
-                    ridePref === opt.id
-                      ? 'bg-[#09090B] text-white border-[#09090B]'
-                      : 'bg-[#F4F4F5] text-[#71717A] border-transparent hover:border-[#E4E4E7]'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setRidePref('auto')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  ridePref === 'auto'
+                    ? 'bg-[#09090B] text-white border-[#09090B] shadow-2xs'
+                    : 'bg-[#F4F4F5] text-[#71717A] border-transparent hover:border-[#E4E4E7]'
+                }`}
+              >
+                <span>🛺 Auto</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRidePref('cab')}
+                className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  ridePref === 'cab'
+                    ? 'bg-[#09090B] text-white border-[#09090B] shadow-2xs'
+                    : 'bg-[#F4F4F5] text-[#71717A] border-transparent hover:border-[#E4E4E7]'
+                }`}
+              >
+                <span>🚕 Cab / Taxi</span>
+              </button>
             </div>
           </div>
 
-          {/* Optional Luggage / Ride Note */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold text-[#09090B]">
-              Luggage / Ride Note (Optional)
-            </label>
-
-            {/* Quick landmark chips */}
-            <div className="flex flex-wrap gap-1 pt-0.5">
-              {quickLandmarks.map((lm) => (
-                <button
-                  key={lm}
-                  type="button"
-                  onClick={() => setPickupNote(lm)}
-                  className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-colors cursor-pointer ${
-                    pickupNote === lm
-                      ? 'bg-[#09090B] text-white'
-                      : 'bg-[#F4F4F5] text-[#71717A] hover:bg-[#E4E4E7]'
-                  }`}
-                >
-                  {lm}
-                </button>
-              ))}
-            </div>
-
-            <input
-              type="text"
-              value={pickupNote}
-              onChange={(e) => setPickupNote(e.target.value)}
-              placeholder="Landmark or luggage note (e.g. 1 trolley, at gate)"
-              maxLength={80}
-              className="w-full px-3 py-1.5 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-medium text-[#09090B] placeholder:text-[#A1A1AA] outline-none"
-            />
-          </div>
-
-          {/* Actions - Compact button */}
+          {/* Submit Action */}
           <div className="pt-2">
             <button
               type="submit"
@@ -378,9 +361,7 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>
-                    {isCreate ? 'Create & Open Ride Group' : 'Confirm & Join for a Ride'}
-                  </span>
+                  <span>{isCreate ? 'Create Ride Group' : 'Join Ride Pool'}</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </>
               )}

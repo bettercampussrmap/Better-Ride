@@ -10,10 +10,9 @@ interface ProgressStepperProps {
 
 const STEPS = [
   { step: 1 as FlowStep, label: 'Destination' },
-  { step: 2 as FlowStep, label: 'Date' },
-  { step: 3 as FlowStep, label: 'Time' },
-  { step: 4 as FlowStep, label: 'Match' },
-  { step: 5 as FlowStep, label: 'Join' },
+  { step: 2 as FlowStep, label: 'Date & Time' },
+  { step: 3 as FlowStep, label: 'Matching' },
+  { step: 4 as FlowStep, label: 'Details' },
 ];
 
 export const ProgressStepper: React.FC<ProgressStepperProps> = ({

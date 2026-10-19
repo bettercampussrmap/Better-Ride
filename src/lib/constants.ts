@@ -11,83 +11,51 @@ export interface DestinationLocation {
 
 export const CAMPUS_DESTINATIONS: DestinationLocation[] = [
   {
-    id: 'vijayawada-railway-station',
-    name: 'Vijayawada Railway Station (BZA)',
-    shortName: 'BZA Railway Station',
-    description: 'Main Junction • Platforms 1-10 & East/West gates',
-    approxDistance: '~32 km',
-    category: 'transit',
-  },
-  {
-    id: 'vijayawada-airport',
-    name: 'Vijayawada Airport (Gannavaram)',
-    shortName: 'Airport (VGA)',
-    description: 'Domestic Airport Terminal • Highway NH16',
-    approxDistance: '~48 km',
-    category: 'transit',
-  },
-  {
-    id: 'pnbs-bus-station',
-    name: 'Pandit Nehru Bus Station (PNBS)',
-    shortName: 'PNBS Bus Station',
-    description: 'Central APSRTC Bus Terminal • Vijayawada',
-    approxDistance: '~30 km',
-    category: 'transit',
-  },
-  {
-    id: 'vijayawada-city',
-    name: 'Vijayawada City (Benz Circle & Malls)',
-    shortName: 'Benz Circle / City',
-    description: 'PVP Square, Trendset Mall, Food Street & MG Road',
+    id: 'vijayawada',
+    name: 'Vijayawada',
+    shortName: 'Vijayawada',
+    description: 'Benz Circle, Malls & City Center',
     approxDistance: '~28 km',
     category: 'city',
   },
   {
+    id: 'vijayawada-station',
+    name: 'Vijayawada Station',
+    shortName: 'Vijayawada Station',
+    description: 'Vijayawada Railway Junction (BZA)',
+    approxDistance: '~32 km',
+    category: 'transit',
+  },
+  {
     id: 'mangalagiri',
-    name: 'Mangalagiri (Bypass & AIIMS)',
-    shortName: 'Mangalagiri Bypass',
-    description: 'Mangalagiri Bus Stand, AIIMS Hospital & Bypass',
+    name: 'Mangalagiri',
+    shortName: 'Mangalagiri',
+    description: 'AIIMS, Bus Stand & Bypass',
     approxDistance: '~14 km',
     category: 'nearby',
   },
   {
-    id: 'guntur-city',
-    name: 'Guntur Railway Station & City',
-    shortName: 'Guntur City',
-    description: 'Guntur Junction, Arundelpet & Brodipet center',
+    id: 'tadepalli',
+    name: 'Tadepalli',
+    shortName: 'Tadepalli',
+    description: 'Kunchanapalli & Bypass junction',
+    approxDistance: '~20 km',
+    category: 'nearby',
+  },
+  {
+    id: 'guntur',
+    name: 'Guntur',
+    shortName: 'Guntur',
+    description: 'Guntur City & Railway Station',
     approxDistance: '~34 km',
     category: 'city',
   },
   {
-    id: 'tenali-station',
-    name: 'Tenali Railway Station',
-    shortName: 'Tenali Station',
-    description: 'Main express train halt towards South routes',
-    approxDistance: '~38 km',
-    category: 'transit',
-  },
-  {
-    id: 'prakasam-barrage',
-    name: 'Prakasam Barrage & Bhavani Island',
-    shortName: 'Prakasam Barrage',
-    description: 'Krishna Riverfront, Bhavani Island boating & cafes',
-    approxDistance: '~26 km',
-    category: 'city',
-  },
-  {
-    id: 'haailand-resort',
-    name: 'Haailand Theme Park & Resort',
-    shortName: 'Haailand NH16',
-    description: 'Water park, sports resort & weekend events',
-    approxDistance: '~18 km',
-    category: 'nearby',
-  },
-  {
-    id: 'neerukonda-kuragallu',
-    name: 'Neerukonda & Kuragallu Town',
-    shortName: 'Neerukonda / D-Mart',
-    description: 'Local campus markets, supermarkets, medical & cafes',
-    approxDistance: '~4 km',
+    id: 'amaravati',
+    name: 'Amaravati',
+    shortName: 'Amaravati',
+    description: 'Capital Secretariat & Core City',
+    approxDistance: '~16 km',
     category: 'nearby',
   },
 ];
@@ -121,23 +89,25 @@ export const CAMPUS_PICKUP_POINTS: CampusPickupPoint[] = [
 ];
 
 export const POPULAR_STUDENT_SPOTS = [
-  'Mangalagiri',
   'Vijayawada',
+  'Vijayawada Station',
+  'Mangalagiri',
   'Tadepalli',
   'Guntur',
   'Amaravati',
 ];
 
 export const DESTINATION_FARES: Record<string, string> = {
-  Mangalagiri: '~₹30 – ₹40 / head',
   Vijayawada: '~₹70 – ₹90 / head',
+  'Vijayawada Station': '~₹70 – ₹90 / head',
+  Mangalagiri: '~₹30 – ₹40 / head',
   Tadepalli: '~₹45 – ₹60 / head',
   Guntur: '~₹80 – ₹110 / head',
   Amaravati: '~₹35 – ₹50 / head',
   default: '~₹40 – ₹60 / head',
 };
 
-export const DEFAULT_DESTINATION = 'Mangalagiri';
+export const DEFAULT_DESTINATION = 'Vijayawada';
 export const DEFAULT_PICKUP_POINT = 'SRM AP Gate 3';
 
 export const MAX_GROUP_MEMBERS = 12;
