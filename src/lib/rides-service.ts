@@ -17,7 +17,11 @@ function loadLocalRides(): SlotWithDetails[] {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          inMemoryRides = parsed;
+          inMemoryRides = parsed.filter(
+            (s: any) =>
+              s.departure_date !== '1970-01-01' &&
+              !s.destination?.startsWith('__better_ride_user__:')
+          );
           return inMemoryRides;
         }
       } catch {}
@@ -79,11 +83,18 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
   if (supabase) {
     try {
       // 1. Fetch time slots from Supabase
-      const { data: slotsData, error: slotsErr } = await supabase
+      const { data: rawSlotsData, error: slotsErr } = await supabase
         .from('time_slots')
         .select('*')
         .order('departure_date', { ascending: true })
         .order('start_time', { ascending: true });
+
+      // Exclude internal user authentication records
+      const slotsData = (rawSlotsData || []).filter(
+        (s: any) =>
+          s.departure_date !== '1970-01-01' &&
+          !s.destination?.startsWith('__better_ride_user__:')
+      );
 
       if (!slotsErr && slotsData) {
         const slotIds = slotsData.map((s) => s.id);
@@ -289,7 +300,10 @@ export async function createAndJoinRide(params: {
 
       // If no specific slot requested or forceNewGroup requested, create a brand new distinct slot
       if (!slotRecord || forceNewGroup || !isValidUuid(slotId)) {
-        const { data: newSlot, error: createErr } = await supabase
+        let newSlot: any = null;
+        let createErr: any = null;
+
+        const res1 = await supabase
           .from('time_slots')
           .insert({
             destination,
@@ -301,6 +315,25 @@ export async function createAndJoinRide(params: {
           })
           .select()
           .maybeSingle();
+
+        if (res1.error) {
+          // Fallback to base columns supported by standard schema
+          const res2 = await supabase
+            .from('time_slots')
+            .insert({
+              destination,
+              departure_date: departureDate,
+              start_time: startTime,
+              end_time: endTime,
+            })
+            .select()
+            .maybeSingle();
+
+          newSlot = res2.data;
+          createErr = res2.error;
+        } else {
+          newSlot = res1.data;
+        }
 
         if (createErr || !newSlot || !newSlot.id || !isValidUuid(newSlot.id)) {
           throw createErr || new Error('Failed to create valid time slot in Supabase');

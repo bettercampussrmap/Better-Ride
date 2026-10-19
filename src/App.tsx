@@ -93,17 +93,33 @@ function AppContent() {
     let isMounted = true;
 
     const initAuth = async () => {
-      // Clear all stored data, slots, messages, saved logins
+      // 1. Check for persisted active user session in localStorage
+      let hasActiveUser = false;
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('better_ride_active_user');
-        localStorage.removeItem('better_ride_mock_slots');
-        localStorage.removeItem('better_ride_mock_messages');
-        localStorage.removeItem('better_ride_database_users');
-        localStorage.removeItem('better_ride_users_by_id');
-        localStorage.removeItem('better_ride_google_user');
+        const savedActive = localStorage.getItem('better_ride_active_user');
+        if (savedActive) {
+          try {
+            const parsed = JSON.parse(savedActive);
+            if (parsed && parsed.id) {
+              setProfile(parsed);
+              setUser({
+                id: parsed.id,
+                email: parsed.email,
+                name: parsed.display_name,
+                user_metadata: {
+                  full_name: parsed.display_name,
+                  name: parsed.display_name,
+                  avatar_url: parsed.avatar_url,
+                  gender: parsed.gender,
+                },
+              });
+              hasActiveUser = true;
+            }
+          } catch {}
+        }
       }
 
-      // 1. Check Supabase session if configured
+      // 2. Check Supabase session if configured
       if (isSupabaseConfigured()) {
         const supabase = getSupabase();
         if (supabase) {

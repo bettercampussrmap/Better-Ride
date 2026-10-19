@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
-import { getSupabase } from '../../lib/supabase';
-import { toValidUuid, isValidUuid } from '../../lib/uuid-utils';
 import { Profile } from '../../types/database';
 import { useToast } from '../ui/Toast';
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import {
+  authenticateWithSupabase,
+  saveUserToSupabase,
+  isEmailRegistered,
+  findUserByEmail,
+  updateUserPasswordInSupabase,
+} from '../../lib/user-auth-service';
+import { toValidUuid } from '../../lib/uuid-utils';
 
 interface LoginPageProps {
   onLoginSuccess: (profile: Profile) => void;
 }
-
-const STORAGE_KEY_LOCAL_USERS = 'better_ride_database_users';
-const STORAGE_KEY_ACTIVE_USER = 'better_ride_active_user';
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const { showToast } = useToast();
@@ -33,35 +36,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [verifiedProfile, setVerifiedProfile] = useState<Profile | null>(null);
   const [showNewPassword, setShowNewPassword] = useState(false);
 
-  // Helper to load and save local backup database
-  const getLocalDatabase = (): Record<string, Profile> => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_LOCAL_USERS);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  };
-
-  const saveToLocalDatabase = (profile: Profile) => {
-    if (typeof window === 'undefined') return;
-    try {
-      if (profile.email) {
-        const db = getLocalDatabase();
-        db[profile.email.toLowerCase()] = profile;
-        localStorage.setItem(STORAGE_KEY_LOCAL_USERS, JSON.stringify(db));
-      }
-      if (profile.id) {
-        const byIdRaw = localStorage.getItem('better_ride_users_by_id');
-        const byId = byIdRaw ? JSON.parse(byIdRaw) : {};
-        byId[profile.id] = profile;
-        localStorage.setItem('better_ride_users_by_id', JSON.stringify(byId));
-      }
-    } catch {}
-  };
-
-  // Handle Sign In
+  // Handle Sign In with Supabase database credentials check
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
@@ -75,67 +50,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsSubmitting(true);
 
     try {
-      const supabase = getSupabase();
-      let matchedProfile: Profile | null = null;
+      const res = await authenticateWithSupabase(cleanEmail, cleanPassword);
 
-      // 1. Query Supabase database storage
-      if (supabase) {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('email', cleanEmail)
-            .maybeSingle();
-
-          if (!error && data) {
-            matchedProfile = data as Profile;
-          }
-        } catch (dbErr) {
-          console.warn('Supabase profile query fallback:', dbErr);
-        }
-      }
-
-      // 2. Fallback to local database registry
-      if (!matchedProfile) {
-        const localDb = getLocalDatabase();
-        matchedProfile = localDb[cleanEmail] || null;
-      }
-
-      // Account not found check
-      if (!matchedProfile) {
+      if (!res.success || !res.profile) {
         showToast(
           'error',
-          'Account Not Found',
-          'No account exists with this email. Please click "Sign up" to create your account.'
+          res.error?.includes('password') ? 'Invalid Credentials' : 'Account Not Found',
+          res.error || 'Login failed.'
         );
         setIsSubmitting(false);
         return;
       }
 
-      // Password verification
-      if (matchedProfile.password && matchedProfile.password !== cleanPassword) {
-        showToast('error', 'Invalid Credentials', 'Incorrect password. Please try again or use Forgot Password.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Ensure valid deterministic UUID
-      matchedProfile.id = isValidUuid(matchedProfile.id)
-        ? matchedProfile.id
-        : toValidUuid(`srm-student-${cleanEmail}`);
-
-      // Save session and local database registry
-      saveToLocalDatabase(matchedProfile);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY_ACTIVE_USER, JSON.stringify(matchedProfile));
-      }
-
       showToast(
         'success',
         'Login Successful',
-        `Welcome back, ${matchedProfile.display_name || 'Student'}!`
+        `Welcome back, ${res.profile.display_name || 'Student'}!`
       );
-      onLoginSuccess(matchedProfile);
+      onLoginSuccess(res.profile);
     } catch (err: any) {
       console.error('Login error:', err);
       showToast('error', 'Login Error', err?.message || 'Could not complete login.');
@@ -144,7 +76,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  // Handle Sign Up with duplicate username and email check
+  // Handle Sign Up with Supabase database persistence
   const handleSignUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = name.trim();
@@ -164,31 +96,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsSubmitting(true);
 
     try {
-      const supabase = getSupabase();
-
-      if (supabase) {
-        try {
-          const { data: existingEmail } = await supabase
-            .from('profiles')
-            .select('id, email')
-            .eq('email', cleanEmail)
-            .maybeSingle();
-
-          if (existingEmail) {
-            showToast(
-              'error',
-              'Email Already Registered',
-              'An account with this email already exists. Please log in or reset password.'
-            );
-            setIsSubmitting(false);
-            return;
-          }
-        } catch {}
-      }
-
-      // Check local database for email
-      const localDb = getLocalDatabase();
-      if (localDb[cleanEmail]) {
+      const alreadyRegistered = await isEmailRegistered(cleanEmail);
+      if (alreadyRegistered) {
         showToast(
           'error',
           'Email Already Registered',
@@ -214,27 +123,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         updated_at: new Date().toISOString(),
       };
 
-      // 1. Store in Supabase database
-      if (supabase) {
-        try {
-          const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
-          if (insertErr) {
-            const { error: upsertErr } = await supabase.from('profiles').upsert(newProfile);
-            if (upsertErr) {
-              console.warn('Supabase profile upsert notice:', upsertErr);
-            }
-          }
-        } catch (dbErr) {
-          console.warn('Supabase database storage error:', dbErr);
-        }
-      }
-
-      // 2. Store in local persistent registry
-      saveToLocalDatabase(newProfile);
-
-      // 3. Save active session
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY_ACTIVE_USER, JSON.stringify(newProfile));
+      // Save user credentials into Supabase database
+      const saveRes = await saveUserToSupabase(newProfile);
+      if (!saveRes.success) {
+        throw new Error(saveRes.error || 'Failed to save account to database');
       }
 
       showToast('success', 'Registration Successful', `Welcome to Better Ride, ${cleanName}!`);
@@ -261,32 +153,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsSubmitting(true);
 
     try {
-      let matched: Profile | null = null;
-      const supabase = getSupabase();
+      const user = await findUserByEmail(cleanEmail);
 
-      if (supabase) {
-        try {
-          const { data } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('email', cleanEmail)
-            .maybeSingle();
-
-          if (data && data.display_name?.trim().toLowerCase() === cleanName.toLowerCase()) {
-            matched = data as Profile;
-          }
-        } catch {}
-      }
-
-      if (!matched) {
-        const localDb = getLocalDatabase();
-        const candidate = localDb[cleanEmail];
-        if (candidate && candidate.display_name?.trim().toLowerCase() === cleanName.toLowerCase()) {
-          matched = candidate;
-        }
-      }
-
-      if (!matched) {
+      if (!user || user.display_name?.trim().toLowerCase() !== cleanName.toLowerCase()) {
         showToast(
           'error',
           'Verification Failed',
@@ -296,12 +165,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         return;
       }
 
-      setVerifiedProfile(matched);
+      setVerifiedProfile(user);
       setForgotStep('reset');
       showToast(
         'success',
         'Identity Verified',
-        `Account confirmed for ${matched.display_name}. Enter your new password below.`
+        `Account confirmed for ${user.display_name}. Enter your new password below.`
       );
     } catch (err: any) {
       showToast('error', 'Verification Error', err?.message || 'Could not verify account.');
@@ -313,7 +182,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   // Handle Forgot Password - Step 2: Set New Password
   const handleForgotReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!verifiedProfile) return;
+    if (!verifiedProfile || !verifiedProfile.email) return;
 
     const cleanPass = newPassword.trim();
     const cleanConfirm = confirmNewPassword.trim();
@@ -331,50 +200,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setIsSubmitting(true);
 
     try {
-      const emailKey = verifiedProfile.email!.toLowerCase();
-
-      // 1. Update Supabase if available
-      const supabase = getSupabase();
-      if (supabase) {
-        try {
-          await supabase
-            .from('profiles')
-            .update({
-              password: cleanPass,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('email', emailKey);
-        } catch {}
+      const res = await updateUserPasswordInSupabase(verifiedProfile.email, cleanPass);
+      if (!res.success) {
+        showToast('error', 'Reset Failed', res.error || 'Could not reset password.');
+        setIsSubmitting(false);
+        return;
       }
-
-      // 2. Update local database
-      const localDb = getLocalDatabase();
-      if (localDb[emailKey]) {
-        localDb[emailKey].password = cleanPass;
-        localDb[emailKey].updated_at = new Date().toISOString();
-        localStorage.setItem(STORAGE_KEY_LOCAL_USERS, JSON.stringify(localDb));
-      }
-
-      // 3. Update active user in localStorage if same email
-      try {
-        const rawActive = localStorage.getItem(STORAGE_KEY_ACTIVE_USER);
-        if (rawActive) {
-          const parsed = JSON.parse(rawActive);
-          if (parsed.email?.toLowerCase() === emailKey) {
-            parsed.password = cleanPass;
-            localStorage.setItem(STORAGE_KEY_ACTIVE_USER, JSON.stringify(parsed));
-          }
-        }
-      } catch {}
 
       showToast(
         'success',
         'Password Reset Successful',
-        'Your password has been updated. Please log in with your new password.'
+        'Your password has been updated in the database. Please log in with your new password.'
       );
 
       // Return to login mode with email pre-filled
-      setEmail(emailKey);
+      setEmail(verifiedProfile.email);
       setPassword('');
       setForgotName('');
       setForgotEmail('');
