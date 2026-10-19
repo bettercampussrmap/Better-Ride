@@ -64,42 +64,42 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-[#FAFAF8] border-b border-[#E4E4E7] px-4 py-2.5 transition-all">
-      <div className="max-w-[480px] sm:max-w-xl mx-auto flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-40 bg-[#FAFAF8] border-b border-[#E4E4E7] px-3 py-1.5 transition-all">
+      <div className="max-w-[420px] mx-auto flex items-center justify-between gap-2.5">
         {/* Brand section */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           {/* Black rounded-square logo with white B */}
-          <div className="w-8 h-8 rounded-lg bg-[#09090B] text-white flex items-center justify-center font-black text-sm tracking-tighter shrink-0 shadow-2xs">
+          <div className="w-7 h-7 rounded-lg bg-[#09090B] text-white flex items-center justify-center font-black text-xs tracking-tighter shrink-0 shadow-2xs">
             B
           </div>
 
           <div className="flex flex-col justify-center">
             {/* Brand title + RIDE pill */}
-            <div className="flex items-center gap-1.5 leading-none">
-              <span className="font-extrabold text-[15px] tracking-tight text-[#09090B]">
+            <div className="flex items-center gap-1 leading-none">
+              <span className="font-extrabold text-sm tracking-tight text-[#09090B]">
                 BetterCampus
               </span>
-              <span className="bg-[#09090B] text-white text-[9px] font-black tracking-wider px-1.5 py-0.5 rounded leading-none uppercase">
+              <span className="bg-[#09090B] text-white text-[8px] font-black tracking-wider px-1 py-0.5 rounded leading-none uppercase">
                 RIDE
               </span>
             </div>
 
             {/* Campus dropdown trigger */}
-            <div className="relative mt-0.5" ref={campusRef}>
+            <div className="relative" ref={campusRef}>
               <button
                 type="button"
                 onClick={() => setCampusDropdownOpen((prev) => !prev)}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-[#71717A] hover:text-[#09090B] transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-[#71717A] hover:text-[#09090B] transition-colors cursor-pointer"
                 aria-label="Select Campus"
               >
-                <MapPin className="w-3 h-3 text-[#71717A]" />
+                <MapPin className="w-2.5 h-2.5 text-[#71717A]" />
                 <span className="font-semibold text-[#09090B]">{currentCampus}</span>
-                <ChevronDown className="w-2.5 h-2.5 text-[#71717A]" />
+                <ChevronDown className="w-2 h-2 text-[#71717A]" />
               </button>
 
               {campusDropdownOpen && (
-                <div className="absolute left-0 top-full mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-[#E4E4E7] py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-3 py-1 text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider">
+                <div className="absolute left-0 top-full mt-1 w-40 bg-white rounded-xl shadow-lg border border-[#E4E4E7] py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-2.5 py-0.5 text-[9px] font-bold text-[#A1A1AA] uppercase tracking-wider">
                     Select Campus
                   </div>
                   {campuses.map((c) => (
@@ -110,12 +110,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                         onSelectCampus?.(c);
                         setCampusDropdownOpen(false);
                       }}
-                      className="w-full text-left px-3 py-1.5 text-xs font-semibold flex items-center justify-between hover:bg-[#F4F4F5] transition-colors"
+                      className="w-full text-left px-2.5 py-1 text-[11px] font-semibold flex items-center justify-between hover:bg-[#F4F4F5] transition-colors"
                     >
                       <span className={c === currentCampus ? 'text-[#09090B] font-bold' : 'text-[#71717A]'}>
                         {c}
                       </span>
-                      {c === currentCampus && <Check className="w-3.5 h-3.5 text-[#09090B]" />}
+                      {c === currentCampus && <Check className="w-3 h-3 text-[#09090B]" />}
                     </button>
                   ))}
                 </div>
@@ -125,7 +125,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         {/* Right action controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {/* Notification bell button */}
           <div className="relative" ref={notifRef}>
             <button
@@ -134,10 +134,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 setNotificationsOpen((prev) => !prev);
                 setNotificationsCount(0);
               }}
-              className="w-9 h-9 rounded-xl border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] flex items-center justify-center text-[#09090B] transition-colors cursor-pointer relative"
+              className="w-7 h-7 rounded-lg border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] flex items-center justify-center text-[#09090B] transition-colors cursor-pointer relative"
               aria-label="Notifications"
             >
-              <Bell className="w-4 h-4" />
+              <Bell className="w-3.5 h-3.5" />
               {notificationsCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#09090B] text-white text-[9px] font-bold flex items-center justify-center">
                   {notificationsCount}

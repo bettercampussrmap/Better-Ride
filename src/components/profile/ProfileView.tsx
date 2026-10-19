@@ -52,7 +52,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     {
       id: 'notifs',
       title: 'Notifications',
-      subtitle: 'Push reminders for departure times',
+      subtitle: 'Push reminders for departures',
       icon: Bell,
     },
     {
@@ -64,20 +64,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   ];
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
+    <div className="space-y-3 animate-in fade-in duration-150">
       {/* Profile Header */}
-      <div className="space-y-0.5 pt-1">
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#09090B] tracking-tight">
+      <div className="space-y-0.5 pt-0.5">
+        <h1 className="text-xl sm:text-2xl font-extrabold text-[#09090B] tracking-tight">
           Profile
         </h1>
-        <p className="text-xs text-[#71717A] font-medium">
+        <p className="text-[11px] text-[#71717A] font-medium">
           BetterCampus student membership
         </p>
       </div>
 
-      {/* User Information Card */}
-      <div className="bg-white rounded-2xl border border-[#E4E4E7] p-4 sm:p-5 shadow-2xs flex items-center gap-3.5">
-        <div className="w-14 h-14 rounded-full overflow-hidden bg-[#09090B] text-white border-2 border-[#E4E4E7] shrink-0 flex items-center justify-center font-bold text-lg">
+      {/* User Information Card - Compact */}
+      <div className="bg-white rounded-xl border border-[#E4E4E7] p-3 shadow-2xs flex items-center gap-3">
+        <div className="w-11 h-11 rounded-full overflow-hidden bg-[#09090B] text-white border border-[#E4E4E7] shrink-0 flex items-center justify-center font-bold text-sm">
           {avatarUrl ? (
             <img
               src={avatarUrl}
@@ -94,59 +94,57 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         <div className="space-y-0.5 min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h3 className="text-base font-bold text-[#09090B] truncate">{displayName}</h3>
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-[#F4F4F5] text-[10px] font-bold text-[#09090B]">
-              <ShieldCheck className="w-3 h-3 text-[#22C55E]" />
+            <h3 className="text-sm font-bold text-[#09090B] truncate">{displayName}</h3>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-[#F4F4F5] text-[9px] font-bold text-[#09090B]">
+              <ShieldCheck className="w-2.5 h-2.5 text-[#22C55E]" />
               <span>Verified</span>
             </span>
           </div>
-          <p className="text-xs text-[#71717A] font-medium truncate">{email}</p>
-          <p className="text-[11px] text-[#A1A1AA] font-semibold">SRM University-AP</p>
+          <p className="text-[11px] text-[#71717A] truncate font-medium">
+            {email || 'SRM University-AP'}
+          </p>
         </div>
       </div>
 
-      {/* Settings list rows */}
-      <div className="bg-white rounded-2xl border border-[#E4E4E7] shadow-2xs divide-y divide-[#E4E4E7] overflow-hidden">
+      {/* Settings Menu List */}
+      <div className="bg-white rounded-xl border border-[#E4E4E7] divide-y divide-[#E4E4E7]/60 overflow-hidden shadow-2xs">
         {menuSections.map((item) => {
-          const Icon = item.icon;
+          const IconComp = item.icon;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => {
-                if (item.id === 'prefs') {
-                  const nextPref = ridePref === 'auto' ? 'cab' : ridePref === 'cab' ? 'any' : 'auto';
-                  setRidePref(nextPref);
-                }
-              }}
-              className="w-full p-4 flex items-center justify-between hover:bg-[#F4F4F5] transition-colors text-left cursor-pointer group"
+              className="w-full p-2.5 text-left flex items-center justify-between hover:bg-[#F4F4F5] transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#F4F4F5] group-hover:bg-white flex items-center justify-center text-[#09090B] shrink-0 transition-colors">
-                  <Icon className="w-4 h-4" />
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-[#F4F4F5] text-[#09090B] flex items-center justify-center shrink-0">
+                  <IconComp className="w-3.5 h-3.5" />
                 </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-[#09090B] tracking-tight">
+                <div className="min-w-0">
+                  <h4 className="text-xs font-bold text-[#09090B] tracking-tight truncate">
                     {item.title}
                   </h4>
-                  <p className="text-[11px] text-[#71717A]">{item.subtitle}</p>
+                  <p className="text-[10px] text-[#71717A] truncate font-medium">
+                    {item.subtitle}
+                  </p>
                 </div>
               </div>
-              <ChevronRight className="w-4 h-4 text-[#A1A1AA] group-hover:text-[#09090B] transition-colors" />
+
+              <ChevronRight className="w-3.5 h-3.5 text-[#A1A1AA] shrink-0" />
             </button>
           );
         })}
       </div>
 
-      {/* Logout Row Button */}
+      {/* Sign Out Button - Compact h-9 */}
       <div className="pt-1">
         <button
           type="button"
           onClick={onSignOut}
-          className="w-full h-12 rounded-xl border border-[#E4E4E7] bg-white hover:bg-red-50 text-xs font-bold text-[#DC2626] transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
+          className="w-full h-9 rounded-xl border border-[#E4E4E7] bg-white hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-xs font-bold text-[#09090B] transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
         >
-          <LogOut className="w-4 h-4" />
-          <span>Log Out of Better Ride</span>
+          <LogOut className="w-3.5 h-3.5" />
+          <span>Sign Out</span>
         </button>
       </div>
     </div>

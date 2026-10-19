@@ -23,13 +23,11 @@ export const Step2TimeSelection: React.FC<Step2TimeSelectionProps> = ({
   onBack,
   onProceed,
 }) => {
-  // Common departure windows for student departures from campus (6 AM to 10 PM)
   const intervals = PREDEFINED_INTERVALS.filter((interval) => {
     const hour = parseInt(interval.startTime.split(':')[0], 10);
-    return hour >= 6 && hour <= 22;
+    return hour >= 6 && hour <= 23;
   });
 
-  // Calculate REAL demand strictly from existing slots in database
   const getDemandForInterval = (interval: IntervalDefinition) => {
     const matchingSlot = existingSlots.find(
       (s) =>
@@ -49,25 +47,25 @@ export const Step2TimeSelection: React.FC<Step2TimeSelectionProps> = ({
     onSelectInterval(interval);
     setTimeout(() => {
       onProceed();
-    }, 150);
+    }, 120);
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
-      {/* Subheader bar */}
-      <div className="flex items-center justify-between pb-1">
+    <div className="space-y-3 animate-in fade-in duration-150">
+      {/* Subheader bar - Compact */}
+      <div className="flex items-center justify-between pb-0.5">
         <button
           type="button"
           onClick={onBack}
-          className="w-9 h-9 rounded-xl border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] flex items-center justify-center text-[#09090B] transition-colors cursor-pointer"
+          className="w-7 h-7 rounded-lg border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] flex items-center justify-center text-[#09090B] transition-colors cursor-pointer"
           aria-label="Back"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-3.5 h-3.5" />
         </button>
 
         <div className="text-center">
-          <h2 className="text-base font-bold text-[#09090B] tracking-tight">{destination}</h2>
-          <p className="text-[11px] font-medium text-[#71717A]">{selectedDate} · SRM</p>
+          <h2 className="text-sm font-bold text-[#09090B] tracking-tight">{destination}</h2>
+          <p className="text-[10px] font-medium text-[#71717A]">{selectedDate} · SRM</p>
         </div>
 
         <button
@@ -79,26 +77,26 @@ export const Step2TimeSelection: React.FC<Step2TimeSelectionProps> = ({
         </button>
       </div>
 
-      {/* 5-Step Progress Stepper (Step 3 active) */}
+      {/* Progress Stepper */}
       <ProgressStepper currentStep={3} />
 
       {/* Heading & Live Demand Pill */}
-      <div className="space-y-1 pt-1">
+      <div className="space-y-0.5 pt-0.5">
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-[#09090B] tracking-tight">
+          <h3 className="text-sm sm:text-base font-bold text-[#09090B] tracking-tight">
             When are you leaving?
           </h3>
-          <span className="bg-[#F4F4F5] border border-[#E4E4E7] text-[#09090B] text-[10px] font-black tracking-wider px-2 py-0.5 rounded-full uppercase">
+          <span className="bg-[#F4F4F5] border border-[#E4E4E7] text-[#09090B] text-[9px] font-black tracking-wider px-2 py-0.5 rounded-full uppercase">
             LIVE DEMAND
           </span>
         </div>
-        <p className="text-xs text-[#71717A] font-medium">
-          Select a 30-minute departure window with live demand
+        <p className="text-[11px] text-[#71717A] font-medium">
+          Select a 30-minute departure window
         </p>
       </div>
 
       {/* List of 30-minute departure slots */}
-      <div className="space-y-2.5 max-h-[58vh] overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
         {intervals.map((interval) => {
           const isSelected = selectedTimeInterval.startTime === interval.startTime;
           const demandText = getDemandForInterval(interval);
@@ -109,18 +107,18 @@ export const Step2TimeSelection: React.FC<Step2TimeSelectionProps> = ({
               key={interval.startTime}
               type="button"
               onClick={() => handleSlotClick(interval)}
-              className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+              className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
                 isSelected
-                  ? 'bg-[#09090B] text-white border-[#09090B] shadow-md scale-[1.01]'
+                  ? 'bg-[#09090B] text-white border-[#09090B] shadow-xs'
                   : 'bg-white text-[#09090B] border-[#E4E4E7] hover:border-[#09090B]/40 shadow-2xs'
               }`}
             >
-              <div className="space-y-1">
-                <div className="text-base font-bold tracking-tight">
+              <div className="space-y-0.5">
+                <div className="text-xs sm:text-sm font-bold tracking-tight">
                   {interval.label}
                 </div>
                 <div
-                  className={`text-xs flex items-center gap-1.5 font-medium ${
+                  className={`text-[10px] flex items-center gap-1 font-medium ${
                     isSelected
                       ? 'text-white/80'
                       : hasStudents
@@ -134,11 +132,11 @@ export const Step2TimeSelection: React.FC<Step2TimeSelectionProps> = ({
               </div>
 
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors ${
+                className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                   isSelected ? 'bg-white/20 text-white' : 'bg-[#F4F4F5] text-[#71717A]'
                 }`}
               >
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3.5 h-3.5" />
               </div>
             </button>
           );

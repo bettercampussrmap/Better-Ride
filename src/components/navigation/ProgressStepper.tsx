@@ -21,10 +21,10 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
   onStepClick,
 }) => {
   return (
-    <div className="w-full py-3 px-2">
+    <div className="w-full py-1.5 px-1">
       <div className="relative flex items-center justify-between">
         {/* Connecting horizontal line */}
-        <div className="absolute left-4 right-4 top-3.5 h-[1.5px] bg-[#E4E4E7] -z-0" />
+        <div className="absolute left-3 right-3 top-2.5 h-[1px] bg-[#E4E4E7] -z-0" />
 
         {STEPS.map(({ step, label }) => {
           const isCompleted = step < currentStep;
@@ -45,7 +45,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
             >
               {/* Step indicator circle */}
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all shadow-2xs ${
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${
                   isCompleted
                     ? 'bg-[#09090B] text-white'
                     : isCurrent
@@ -54,7 +54,7 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
                 }`}
               >
                 {isCompleted ? (
-                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <Check className="w-2.5 h-2.5 stroke-[3]" />
                 ) : (
                   <span>{step}</span>
                 )}
@@ -62,12 +62,12 @@ export const ProgressStepper: React.FC<ProgressStepperProps> = ({
 
               {/* Step label */}
               <span
-                className={`text-[10px] sm:text-[11px] mt-1.5 whitespace-nowrap transition-colors ${
+                className={`text-[9px] mt-0.5 tracking-tight ${
                   isCurrent
                     ? 'font-bold text-[#09090B]'
                     : isCompleted
-                    ? 'font-medium text-[#09090B]'
-                    : 'font-medium text-[#A1A1AA]'
+                    ? 'font-medium text-[#71717A]'
+                    : 'text-[#A1A1AA]'
                 }`}
               >
                 {label}

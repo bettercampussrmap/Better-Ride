@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Users,
@@ -9,197 +9,358 @@ import {
   MessageSquare,
   AlertCircle,
   ChevronRight,
+  Car,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import { SlotWithDetails } from '../../types/database';
-import { formatTime12 } from '../../lib/date-utils';
+import { formatTime12, getTodayISTDateString, getOffsetISTDateString } from '../../lib/date-utils';
+import { CAMPUS_DESTINATIONS, CAMPUS_PICKUP_POINTS, PREDEFINED_INTERVALS, MAX_GROUP_MEMBERS } from '../../lib/constants';
+
+export interface RideActionOptions {
+  slotId?: string;
+  destination: string;
+  departureDate: string;
+  startTime: string;
+  endTime: string;
+  pickupPoint: string;
+  pickupNote: string;
+  targetSize: number;
+  ridePref: string;
+}
 
 interface JoinGroupModalProps {
-  slot: SlotWithDetails;
   isOpen: boolean;
   onClose: () => void;
-  onConfirmJoin: (options: {
-    targetSize: number;
-    pickupNote: string;
-  }) => Promise<void>;
-  isJoining: boolean;
+  mode?: 'join' | 'create';
+  slot?: SlotWithDetails | null;
+  initialDestination?: string;
+  initialDate?: string;
+  initialTimeInterval?: { startTime: string; endTime: string };
+  initialPickup?: string;
+  onConfirm?: (options: RideActionOptions) => Promise<void>;
+  onConfirmJoin?: (options: { targetSize: number; pickupNote: string }) => Promise<void>;
+  isSubmitting?: boolean;
+  isJoining?: boolean;
   existingJoinedSlot?: SlotWithDetails | null;
 }
 
 export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
-  slot,
   isOpen,
   onClose,
+  mode = 'join',
+  slot,
+  initialDestination = 'Mangalagiri',
+  initialDate,
+  initialTimeInterval,
+  initialPickup = 'SRM AP Gate 3',
+  onConfirm,
   onConfirmJoin,
-  isJoining,
+  isSubmitting = false,
+  isJoining = false,
   existingJoinedSlot,
 }) => {
-  const isStartingNewGroup = slot.memberCount === 0;
-  const isSwitching = existingJoinedSlot && existingJoinedSlot.id !== slot.id;
+  const isCreate = mode === 'create' || !slot;
+  const isPending = isSubmitting || isJoining;
 
-  // Initial group target size: preserve first member's preference if joining existing group
-  const defaultTargetSize = slot.members[0]?.target_size || 4;
-  const [selectedSize, setSelectedSize] = useState<number>(defaultTargetSize);
-  const [pickupNote, setPickupNote] = useState<string>('');
+  // Form state
+  const [destination, setDestination] = useState(slot?.destination || initialDestination);
+  const [departureDate, setDepartureDate] = useState(
+    slot?.departure_date || initialDate || getTodayISTDateString()
+  );
+  const [startTime, setStartTime] = useState(
+    slot?.start_time || initialTimeInterval?.startTime || '10:00:00'
+  );
+  const [endTime, setEndTime] = useState(
+    slot?.end_time || initialTimeInterval?.endTime || '10:30:00'
+  );
+  const [pickupPoint, setPickupPoint] = useState(
+    slot?.pickup_point || initialPickup || 'SRM AP Gate 3'
+  );
+  const [pickupNote, setPickupNote] = useState(slot?.members?.[0]?.pickup_note || '');
+  const [targetSize, setTargetSize] = useState<number>(() => {
+    if (slot?.target_size) return Math.min(MAX_GROUP_MEMBERS, Math.max(2, slot.target_size));
+    return 4;
+  });
+  const [ridePref, setRidePref] = useState<string>(slot?.ride_type || 'auto');
+
+  // Sync state whenever modal opens or slot changes
+  useEffect(() => {
+    if (slot) {
+      setDestination(slot.destination);
+      setDepartureDate(slot.departure_date);
+      setStartTime(slot.start_time);
+      setEndTime(slot.end_time);
+      setPickupPoint(slot.pickup_point || 'SRM AP Gate 3');
+      setTargetSize(Math.min(MAX_GROUP_MEMBERS, Math.max(2, slot.target_size || 4)));
+    } else {
+      if (initialDestination) setDestination(initialDestination);
+      if (initialDate) setDepartureDate(initialDate);
+      if (initialTimeInterval) {
+        setStartTime(initialTimeInterval.startTime);
+        setEndTime(initialTimeInterval.endTime);
+      }
+      if (initialPickup) setPickupPoint(initialPickup);
+    }
+  }, [slot, initialDestination, initialDate, initialTimeInterval, initialPickup, isOpen]);
 
   if (!isOpen) return null;
 
   const quickLandmarks = [
-    'Main Gate Security Cabin',
+    'Gate 3 Security Cabin',
     'Near Campus ATM',
-    'Hostel 2 Gate',
-    'Hostel 4 Ground',
-    'Admin Block Roundabout',
+    'Hostel Gate',
+    'Admin Block',
   ];
 
-  // Purely number of persons - NO prices, NO vehicle types tied to count
-  const sizeOptions = [
-    { count: 3, label: '3 Persons', desc: 'Up to 3 members' },
-    { count: 4, label: '4 Persons', desc: 'Up to 4 members (Standard)' },
-    { count: 5, label: '5 Persons', desc: 'Up to 5 members' },
-    { count: 6, label: '6 Persons', desc: 'Up to 6 members' },
-  ];
+  const allowedSizes = [3, 4, 6, 8, 10, 12];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onConfirmJoin({
-      targetSize: selectedSize,
-      pickupNote: pickupNote.trim(),
-    });
+    const finalSize = Math.min(MAX_GROUP_MEMBERS, Math.max(2, targetSize));
+    if (onConfirm) {
+      await onConfirm({
+        slotId: slot?.id,
+        destination,
+        departureDate,
+        startTime,
+        endTime,
+        pickupPoint,
+        pickupNote: pickupNote.trim(),
+        targetSize: finalSize,
+        ridePref,
+      });
+    } else if (onConfirmJoin) {
+      await onConfirmJoin({
+        targetSize: finalSize,
+        pickupNote: pickupNote.trim(),
+      });
+    }
   };
 
-  const timeDisplay = `${formatTime12(slot.start_time)} – ${formatTime12(slot.end_time)}`;
+  const handleTimeSelect = (val: string) => {
+    const match = PREDEFINED_INTERVALS.find((i) => i.startTime === val);
+    if (match) {
+      setStartTime(match.startTime);
+      setEndTime(match.endTime);
+    } else {
+      setStartTime(val);
+      const [h, m] = val.split(':').map(Number);
+      const endM = (m + 30) % 60;
+      const endH = m + 30 >= 60 ? (h + 1) % 24 : h;
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      setEndTime(`${pad(endH)}:${pad(endM)}:00`);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      {/* Modal / Bottom Sheet Box */}
-      <div className="bg-[#FFFEFA] w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-[#245C3A]/25 max-h-[92vh] sm:max-h-[85vh] flex flex-col overflow-hidden text-[#171A17] animate-in slide-in-from-bottom duration-250">
-        {/* Mobile Pull Indicator */}
-        <div className="sm:hidden flex justify-center pt-2.5 pb-1">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
-        </div>
-
-        {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-[#F1F7F0] text-[#245C3A] flex items-center justify-center shrink-0">
-              {isStartingNewGroup ? <Sparkles className="w-5 h-5 text-[#E6A15A]" /> : <Users className="w-5 h-5" />}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+      <div
+        className="bg-white w-full max-w-[400px] rounded-2xl shadow-xl border border-[#E4E4E7] max-h-[90vh] flex flex-col overflow-hidden text-[#09090B] animate-in zoom-in-95 duration-150"
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Header - Compact */}
+        <div className="px-4 py-3 border-b border-[#E4E4E7] flex items-center justify-between shrink-0 bg-[#FAFAF8]">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[#09090B] text-white flex items-center justify-center font-bold text-xs shrink-0">
+              {isCreate ? <Plus className="w-4 h-4" /> : <Users className="w-4 h-4" />}
             </div>
-            <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-extrabold text-[#183F2A] tracking-tight truncate">
-                {isSwitching
-                  ? 'Switch Travel Group'
-                  : isStartingNewGroup
-                  ? 'Start a Ride Group'
-                  : 'Join Departure Group'}
+            <div>
+              <h3 className="text-sm font-bold text-[#09090B] tracking-tight">
+                {isCreate ? 'Create Ride Group' : 'Join for a Ride'}
               </h3>
-              <p className="text-[11px] text-[#737B73] truncate">
-                SRM University-AP Campus Gate • {timeDisplay}
+              <p className="text-[10px] text-[#71717A]">
+                {isCreate ? 'Set up options & invite peers' : `Group: ${destination}`}
               </p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors shrink-0 cursor-pointer"
+            className="w-7 h-7 rounded-lg hover:bg-[#EDEDF0] flex items-center justify-center text-[#71717A] hover:text-[#09090B] transition-colors cursor-pointer"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Modal Body / Scrollable Content */}
-        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4">
-          {/* Active Single Slot Warning if User is already in another slot */}
-          {isSwitching && (
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 flex items-start gap-2.5 text-xs">
-              <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <div>
-                <strong>Single Slot Policy:</strong> You are currently scheduled for the{' '}
-                <strong>
-                  {formatTime12(existingJoinedSlot.start_time)} – {formatTime12(existingJoinedSlot.end_time)}
-                </strong>{' '}
-                slot ({existingJoinedSlot.destination}). Confirming will automatically move you to this new slot.
-              </div>
-            </div>
-          )}
-
-          {/* Slot Summary Info Box */}
-          <div className="p-3.5 rounded-2xl bg-[#F1F7F0] border border-[#245C3A]/15 space-y-1.5">
-            <div className="flex items-center justify-between text-xs font-bold text-[#183F2A]">
-              <span className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#245C3A]" />
-                Destination: {slot.destination}
-              </span>
-              <span className="flex items-center gap-1 text-[#245C3A]">
-                <Clock className="w-3.5 h-3.5" />
-                {timeDisplay}
-              </span>
-            </div>
-            {!isStartingNewGroup && (
-              <div className="text-[11px] text-[#737B73] pt-1 border-t border-[#245C3A]/10 flex items-center gap-1.5">
-                <Users className="w-3 h-3 text-[#245C3A]" />
-                <span>
-                  Currently <strong>{slot.memberCount} member{slot.memberCount > 1 ? 's' : ''}</strong> joined in this group.
-                </span>
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-4 overflow-y-auto space-y-3.5 text-xs">
+          {/* Destination */}
+          <div>
+            <label className="block text-[11px] font-bold text-[#09090B] mb-1">
+              Destination
+            </label>
+            {isCreate ? (
+              <select
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-semibold text-[#09090B] outline-none"
+              >
+                {CAMPUS_DESTINATIONS.map((d) => (
+                  <option key={d.id} value={d.name}>
+                    {d.name} ({d.approxDistance})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="px-3 py-2 rounded-xl bg-[#F4F4F5] border border-[#E4E4E7] font-bold text-[#09090B] flex items-center justify-between">
+                <span>{destination}</span>
+                <span className="text-[10px] text-[#71717A] font-medium">{slot?.departure_date}</span>
               </div>
             )}
           </div>
 
-          {/* Select Number of Members */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-[#183F2A] uppercase tracking-wider">
-              Select Number of Members
-            </label>
-            <p className="text-[11px] text-[#737B73]">
-              Choose the group size for this departure slot.
-            </p>
+          {/* Date & Time if creating */}
+          {isCreate && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-[#09090B] mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={departureDate}
+                  min={getTodayISTDateString()}
+                  onChange={(e) => setDepartureDate(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-medium text-[#09090B] outline-none"
+                />
+              </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:gap-2.5 pt-1">
-              {sizeOptions.map((opt) => {
-                const isSelected = selectedSize === opt.count;
-                return (
-                  <button
-                    key={opt.count}
-                    type="button"
-                    onClick={() => setSelectedSize(opt.count)}
-                    className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer active:scale-[0.98] ${
-                      isSelected
-                        ? 'bg-[#183F2A] text-white border-[#183F2A] shadow-xs'
-                        : 'bg-white hover:bg-[#F1F7F0] text-[#171A17] border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-extrabold text-sm flex items-center gap-1.5">
-                        <Users className={`w-3.5 h-3.5 ${isSelected ? 'text-[#E6A15A]' : 'text-[#245C3A]'}`} />
-                        {opt.label}
-                      </span>
-                      {isSelected && (
-                        <Check className="w-4 h-4 text-[#E6A15A]" />
-                      )}
-                    </div>
-                    <span className={`text-[10px] ${isSelected ? 'text-white/80' : 'text-[#737B73]'}`}>
-                      {opt.desc}
-                    </span>
-                  </button>
-                );
-              })}
+              <div>
+                <label className="block text-[11px] font-bold text-[#09090B] mb-1">
+                  Departure Time
+                </label>
+                <select
+                  value={startTime}
+                  onChange={(e) => handleTimeSelect(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-medium text-[#09090B] outline-none"
+                >
+                  {PREDEFINED_INTERVALS.filter((i) => {
+                    const h = parseInt(i.startTime.split(':')[0], 10);
+                    return h >= 6 && h <= 23;
+                  }).map((i) => (
+                    <option key={i.startTime} value={i.startTime}>
+                      {i.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Group Member Limit (Maximum 12 members) */}
+          <div className="space-y-1.5 bg-[#F4F4F5] p-3 rounded-xl border border-[#E4E4E7]">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-[#09090B] block">
+                  Member Limit (Max 12)
+                </span>
+                <span className="text-[10px] text-[#71717A]">
+                  Capacity limit for this pool: up to {MAX_GROUP_MEMBERS} members
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTargetSize((prev) => Math.max(2, prev - 1))}
+                  disabled={targetSize <= 2}
+                  className="w-6 h-6 rounded-lg bg-white border border-[#E4E4E7] hover:bg-gray-100 flex items-center justify-center text-[#09090B] disabled:opacity-40 cursor-pointer"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="w-6 text-center font-extrabold text-sm text-[#09090B]">
+                  {targetSize}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setTargetSize((prev) => Math.min(MAX_GROUP_MEMBERS, prev + 1))}
+                  disabled={targetSize >= MAX_GROUP_MEMBERS}
+                  className="w-6 h-6 rounded-lg bg-white border border-[#E4E4E7] hover:bg-gray-100 flex items-center justify-center text-[#09090B] disabled:opacity-40 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick chips for sizes up to 12 */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {allowedSizes.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTargetSize(s)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                    targetSize === s
+                      ? 'bg-[#09090B] text-white border-[#09090B]'
+                      : 'bg-white text-[#71717A] border-[#E4E4E7] hover:text-[#09090B]'
+                  }`}
+                >
+                  {s} seats {s === 12 ? '(Max)' : ''}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Pickup Landmark / Note (Optional) */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-[#183F2A] uppercase tracking-wider">
-              Pickup Landmark or Note (Optional)
+          {/* Vehicle / Ride Preference */}
+          <div>
+            <label className="block text-[11px] font-bold text-[#09090B] mb-1">
+              Vehicle Preference
             </label>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="grid grid-cols-4 gap-1.5">
+              {[
+                { id: 'auto', label: '🛺 Auto' },
+                { id: 'cab', label: '🚕 Cab' },
+                { id: 'shuttle', label: '🚐 Van' },
+                { id: 'any', label: '✨ Any' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setRidePref(opt.id)}
+                  className={`py-1.5 px-2 rounded-xl text-[10px] font-bold border text-center transition-all cursor-pointer ${
+                    ridePref === opt.id
+                      ? 'bg-[#09090B] text-white border-[#09090B]'
+                      : 'bg-[#F4F4F5] text-[#71717A] border-transparent hover:border-[#E4E4E7]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Pickup Point & Landmark */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-[#09090B]">
+              Pickup Point on Campus
+            </label>
+            <select
+              value={pickupPoint}
+              onChange={(e) => setPickupPoint(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-semibold text-[#09090B] outline-none"
+            >
+              {CAMPUS_PICKUP_POINTS.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Quick landmark chips */}
+            <div className="flex flex-wrap gap-1 pt-0.5">
               {quickLandmarks.map((lm) => (
                 <button
                   key={lm}
                   type="button"
                   onClick={() => setPickupNote(lm)}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                  className={`px-2 py-0.5 rounded-md text-[9px] font-medium transition-colors cursor-pointer ${
                     pickupNote === lm
-                      ? 'bg-[#245C3A] text-white'
-                      : 'bg-gray-100 text-[#737B73] hover:bg-gray-200'
+                      ? 'bg-[#09090B] text-white'
+                      : 'bg-[#F4F4F5] text-[#71717A] hover:bg-[#E4E4E7]'
                   }`}
                 >
                   {lm}
@@ -211,39 +372,27 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
               type="text"
               value={pickupNote}
               onChange={(e) => setPickupNote(e.target.value)}
-              placeholder="e.g. Near ATM, blue backpack"
-              maxLength={100}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-gray-200 text-xs text-[#171A17] focus:outline-none focus:ring-2 focus:ring-[#245C3A]"
+              placeholder="Landmark or luggage note (e.g. 1 trolley, at gate)"
+              maxLength={80}
+              className="w-full px-3 py-1.5 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-medium text-[#09090B] placeholder:text-[#A1A1AA] outline-none"
             />
           </div>
 
-          {/* Group Chat Access Notice */}
-          <div className="p-3 rounded-xl bg-[#F1F7F0] border border-[#245C3A]/15 flex items-start gap-2.5 text-[11px] text-[#183F2A]">
-            <MessageSquare className="w-4 h-4 text-[#245C3A] shrink-0 mt-0.5" />
-            <div>
-              <strong>Slot Group Chat:</strong> You can plan and coordinate directly in the dedicated group chat as soon as you confirm.
-            </div>
-          </div>
-
-          {/* Submit Action */}
+          {/* Actions - Compact button */}
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isJoining}
-              className="w-full py-3.5 px-5 rounded-2xl bg-[#245C3A] hover:bg-[#183F2A] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.99]"
+              disabled={isPending}
+              className="w-full h-10 rounded-xl bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              {isJoining ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              {isPending ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
                   <span>
-                    {isSwitching
-                      ? 'Switch to This Slot'
-                      : isStartingNewGroup
-                      ? 'Confirm & Start Group'
-                      : 'Confirm & Join Group'}
+                    {isCreate ? 'Create & Open Ride Group' : 'Confirm & Join for a Ride'}
                   </span>
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </>
               )}
             </button>

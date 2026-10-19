@@ -22,11 +22,11 @@ export function normalizeSupabaseUrl(rawUrl: string): string {
 }
 
 export function getSupabaseEnvConfig(): { url: string; key: string } {
-  const rawUrl =
+  let rawUrl =
     (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_SUPABASE_URL) : null) ||
     (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
     (import.meta.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
-    'https://wcsqvmmiivxtgnoikwwm.supabase.co';
+    '';
 
   const key =
     (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_SUPABASE_KEY) : null) ||
@@ -35,13 +35,23 @@ export function getSupabaseEnvConfig(): { url: string; key: string } {
     (import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
     '';
 
+  // If a legacy demo project URL was previously saved in localStorage without an API key, clear it
+  if (rawUrl && rawUrl.includes('wcsqvmmiivxtgnoikwwm') && (!key || key.length < 20)) {
+    rawUrl = '';
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(STORAGE_KEY_SUPABASE_URL);
+      } catch {}
+    }
+  }
+
   const url = normalizeSupabaseUrl(rawUrl);
   return { url, key: key.trim() };
 }
 
 export function isSupabaseConfigured(): boolean {
   const { url, key } = getSupabaseEnvConfig();
-  return Boolean(url && key && url.startsWith('http'));
+  return Boolean(url && key && url.startsWith('http') && key.length > 20);
 }
 
 export function getSupabase(): SupabaseClient | null {
@@ -122,10 +132,36 @@ export async function getGoogleOAuthUrl(): Promise<string> {
   return data.url;
 }
 
-export async function signInWithGoogle() {
-  const url = await getGoogleOAuthUrl();
-  if (typeof window !== 'undefined') {
-    window.open(url, '_blank');
+export async function signInWithGoogle(): Promise<void> {
+  const { url, key } = getSupabaseEnvConfig();
+  const supabase = getSupabase();
+  if (!supabase || !key || key.length < 20) {
+    throw new Error('Supabase client is not configured with an API key.');
+  }
+
+  const currentRedirect = typeof window !== 'undefined'
+    ? `${window.location.origin}${window.location.pathname}`
+    : undefined;
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: currentRedirect,
+      queryParams: {
+        prompt: 'select_account',
+      },
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (data?.url && typeof window !== 'undefined') {
+    const finalUrl = data.url.includes('apikey=')
+      ? data.url
+      : `${data.url}${data.url.includes('?') ? '&' : '?'}apikey=${encodeURIComponent(key)}`;
+    window.location.href = finalUrl;
   }
 }
 
