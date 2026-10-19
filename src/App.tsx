@@ -279,7 +279,23 @@ function AppContent() {
       {!user ? (
         <LoginPage onLoginSuccess={handleLoginSuccess} />
       ) : (
-        <Dashboard user={user} profile={profile} onSignOut={handleSignOut} />
+        <Dashboard
+          user={user}
+          profile={profile}
+          onUpdateProfile={(updatedProfile: Profile) => {
+            setProfile(updatedProfile);
+            setUser((prev: any) => ({
+              ...(prev || {}),
+              name: updatedProfile.display_name,
+              user_metadata: {
+                ...(prev?.user_metadata || {}),
+                full_name: updatedProfile.display_name,
+                name: updatedProfile.display_name,
+              },
+            }));
+          }}
+          onSignOut={handleSignOut}
+        />
       )}
     </>
   );

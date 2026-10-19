@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Send, MapPin } from 'lucide-react';
 import { SlotWithDetails, Message } from '../../types/database';
 import { getSupabase } from '../../lib/supabase';
-import { formatMessageTime } from '../../lib/date-utils';
+import { formatMessageTime, isRideCompleted } from '../../lib/date-utils';
 import { fetchMessagesForSlot, postMessageToSlot } from '../../lib/rides-service';
 
 interface Step5GroupChatProps {
@@ -22,6 +22,7 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isCompleted = isRideCompleted(ride.departure_date, ride.end_time);
 
   const quickReplies = [
     "I'm at Gate 3.",
@@ -141,13 +142,18 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
 
           <div>
             <div className="flex items-center gap-1.5">
-              <h3 className="text-sm font-bold text-[#09090B] tracking-tight">
+              <h3 className="text-xs sm:text-sm font-bold text-[#09090B] tracking-tight">
                 {ride.destination}
               </h3>
-              <span className="px-1.5 py-0.2 rounded-full bg-[#09090B] text-white text-[9px] font-bold flex items-center gap-1">
+              <span className="px-1.5 py-0.2 rounded-full bg-[#09090B] text-white text-[8px] font-bold flex items-center gap-0.5">
                 <span>👥</span>
                 <span>{ride.memberCount || 1}/{ride.target_size || 4}</span>
               </span>
+              {isCompleted && (
+                <span className="px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 text-[8px] font-bold border border-emerald-200">
+                  Completed
+                </span>
+              )}
             </div>
             <p className="text-[10px] text-[#71717A] flex items-center gap-1 font-medium">
               <MapPin className="w-2.5 h-2.5" />
@@ -161,8 +167,10 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
       <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#FAFAF8]/50">
         {/* Coordination System Prompt */}
         <div className="bg-[#F4F4F5] border border-[#E4E4E7] rounded-lg p-2 text-center max-w-xs mx-auto shadow-2xs">
-          <p className="text-[11px] text-[#71717A] leading-relaxed">
-            Ride coordination for <strong className="text-[#09090B]">{ride.destination}</strong>. Pickup at <strong className="text-[#09090B]">{ride.pickup_point || 'SRM AP Gate 3'}</strong>. Send a message to coordinate departure!
+          <p className="text-[10px] text-[#71717A] leading-relaxed">
+            {isCompleted
+              ? 'Ride is complete. Group chat remains active for fare settlement and peer contact.'
+              : `Ride coordination for ${ride.destination}. Pickup at ${ride.pickup_point || 'SRM AP Gate 3'}. Coordinate departure with members!`}
           </p>
         </div>
 

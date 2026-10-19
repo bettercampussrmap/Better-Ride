@@ -1,7 +1,8 @@
 import React from 'react';
-import { ArrowLeft, AlertTriangle, ShieldCheck, Clock, MessageSquare, ArrowRight, User } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, ShieldCheck, Clock, MessageSquare, ArrowRight, User, CheckCircle2 } from 'lucide-react';
 import { DESTINATION_FARES } from '../../lib/constants';
 import { SlotWithDetails } from '../../types/database';
+import { isRideCompleted } from '../../lib/date-utils';
 import { useToast } from '../ui/Toast';
 
 interface Step4JoinedRideDetailsProps {
@@ -26,6 +27,7 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
   const memberCount = ride.memberCount || (ride.members?.length ?? 1);
   const targetSeats = ride.target_size || 4;
   const seatsOpen = Math.max(0, targetSeats - memberCount);
+  const isCompleted = isRideCompleted(ride.departure_date, ride.end_time);
 
   return (
     <div className="space-y-3 animate-in fade-in duration-150">
@@ -41,9 +43,18 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
         </button>
 
         {/* Joined Status Pill */}
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#09090B] text-white text-[11px] font-bold shadow-2xs">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
-          <span>{memberCount}/{targetSeats} Joined</span>
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#09090B] text-white text-[10px] font-bold shadow-2xs">
+          {isCompleted ? (
+            <>
+              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+              <span>Completed</span>
+            </>
+          ) : (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
+              <span>{memberCount}/{targetSeats} Joined</span>
+            </>
+          )}
         </div>
 
         <button
@@ -211,16 +222,16 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
         )}
       </div>
 
-      {/* Primary Action Button - Compact h-9.5 */}
-      <div className="pt-1 space-y-2">
+      {/* Primary Action Button - Compact h-8.5 */}
+      <div className="pt-1 space-y-1.5">
         <button
           type="button"
           onClick={onOpenChat}
-          className="w-full h-9.5 bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+          className="w-full h-8.5 bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
         >
-          <MessageSquare className="w-3.5 h-3.5" />
+          <MessageSquare className="w-3 h-3" />
           <span>Open Group Chat</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          <ArrowRight className="w-3 h-3" />
         </button>
 
         {/* Leave this ride */}
@@ -228,7 +239,7 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
           <button
             type="button"
             onClick={onLeaveRide}
-            className="text-[11px] font-bold text-[#DC2626] hover:underline cursor-pointer py-0.5"
+            className="text-[10px] font-bold text-[#DC2626] hover:underline cursor-pointer py-0.5"
           >
             Leave this ride
           </button>

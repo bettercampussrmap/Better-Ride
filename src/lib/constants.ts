@@ -111,8 +111,8 @@ export const DEFAULT_DESTINATION = 'Vijayawada';
 export const DEFAULT_PICKUP_POINT = 'SRM AP Gate 3';
 
 export const MAX_GROUP_MEMBERS = 12;
-export const DEFAULT_GROUP_SIZE = 12;
-export const ALLOWED_GROUP_SIZES = [4, 6, 8, 12] as const;
+export const DEFAULT_GROUP_SIZE = 4;
+export const ALLOWED_GROUP_SIZES = [2, 4, 6, 8, 12] as const;
 
 export interface IntervalDefinition {
   startTime: string; // HH:MM:00

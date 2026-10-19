@@ -73,48 +73,59 @@ export const Step1DestinationDate: React.FC<Step1DestinationDateProps> = ({
             <button
               type="button"
               onClick={() => setIsChangingDest(false)}
-              className="text-xs font-semibold text-[#71717A] hover:text-[#09090B]"
+              className="text-xs font-semibold text-[#71717A] hover:text-[#09090B] cursor-pointer"
             >
               Done
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
-            {CAMPUS_DESTINATIONS.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => {
-                  onDestinationChange(d.name);
-                  setIsChangingDest(false);
-                }}
-                className={`p-2 rounded-lg border text-left text-xs font-semibold transition-all ${
-                  destination === d.name
-                    ? 'bg-[#09090B] text-white border-[#09090B]'
-                    : 'bg-[#F4F4F5] text-[#09090B] border-transparent hover:border-[#E4E4E7]'
-                }`}
-              >
-                <div className="font-bold truncate text-[11px]">{d.shortName}</div>
-                <div className={`text-[9px] ${destination === d.name ? 'text-white/70' : 'text-[#71717A]'}`}>
-                  {d.approxDistance}
-                </div>
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+            {CAMPUS_DESTINATIONS.map((d) => {
+              const isSelected = destination === d.name;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => {
+                    onDestinationChange(d.name);
+                    setIsChangingDest(false);
+                  }}
+                  className={`p-2 rounded-lg border text-left text-xs font-semibold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#09090B] text-white border-[#09090B] shadow-2xs'
+                      : 'bg-[#F4F4F5] text-[#09090B] border-transparent hover:border-[#E4E4E7]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold truncate text-[11px]">{d.shortName}</span>
+                    {isSelected && <span className="text-[10px] text-emerald-400 font-bold">✓</span>}
+                  </div>
+                  <div className={`text-[9px] ${isSelected ? 'text-white/70' : 'text-[#71717A]'}`}>
+                    {d.approxDistance}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Selected Destination Card - Compact */}
-      <div className="bg-white rounded-xl border border-[#E4E4E7] p-3 shadow-2xs flex items-center justify-between">
-        <div className="space-y-0.5">
-          <span className="text-[9px] font-bold text-[#71717A] uppercase tracking-wider">
-            SELECTED DESTINATION
-          </span>
-          <h3 className="text-sm font-bold text-[#09090B]">{destination}</h3>
+      <div className="bg-white rounded-xl border border-[#E4E4E7] p-2.5 sm:p-3 shadow-2xs flex items-center justify-between">
+        <div className="space-y-0.2">
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] font-bold text-[#71717A] uppercase tracking-wider">
+              SELECTED DESTINATION
+            </span>
+            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded">
+              ✓ Active
+            </span>
+          </div>
+          <h3 className="text-xs sm:text-sm font-bold text-[#09090B]">{destination}</h3>
         </div>
         <button
           type="button"
           onClick={() => setIsChangingDest(true)}
-          className="px-2.5 py-1 rounded-lg border border-[#E4E4E7] bg-white text-[11px] font-bold text-[#09090B] hover:bg-[#F4F4F5] transition-colors cursor-pointer"
+          className="px-2.5 py-1 rounded-lg border border-[#E4E4E7] bg-white text-[10px] font-bold text-[#09090B] hover:bg-[#F4F4F5] transition-colors cursor-pointer"
         >
           Change
         </button>

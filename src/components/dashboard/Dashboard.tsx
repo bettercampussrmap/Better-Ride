@@ -11,7 +11,7 @@ import { MyRidesView } from '../rides/MyRidesView';
 import { ProfileView } from '../profile/ProfileView';
 import { JoinGroupModal, RideActionOptions } from '../slots/JoinGroupModal';
 import { Profile, SlotWithDetails } from '../../types/database';
-import { getTodayISTDateString } from '../../lib/date-utils';
+import { getTodayISTDateString, isRideCompleted } from '../../lib/date-utils';
 import { useToast } from '../ui/Toast';
 import {
   DEFAULT_DESTINATION,
@@ -29,6 +29,7 @@ import {
 interface DashboardProps {
   user: any;
   profile: Profile | null;
+  onUpdateProfile?: (profile: Profile) => void;
   onSignOut: () => void;
 }
 
@@ -43,6 +44,7 @@ type FlowScreen =
 export const Dashboard: React.FC<DashboardProps> = ({
   user,
   profile,
+  onUpdateProfile,
   onSignOut,
 }) => {
   const { showToast } = useToast();
@@ -123,27 +125,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return userIds.size;
   }, [rides]);
 
-  // User's joined upcoming vs past rides
-  const todayStr = getTodayISTDateString();
+  // User's joined upcoming vs past rides (marked complete when slot end time is reached)
   const myUpcomingRides = useMemo(() => {
-    return rides.filter((r) => r.isUserJoined && r.departure_date >= todayStr);
-  }, [rides, todayStr]);
+    return rides.filter((r) => r.isUserJoined && !isRideCompleted(r.departure_date, r.end_time));
+  }, [rides]);
 
   const myPastRides = useMemo(() => {
-    return rides.filter((r) => r.isUserJoined && r.departure_date < todayStr);
-  }, [rides, todayStr]);
+    return rides.filter((r) => r.isUserJoined && isRideCompleted(r.departure_date, r.end_time));
+  }, [rides]);
 
-  // Matching rides for current flow selection
-  const bestMatchRide = useMemo(() => {
-    return (
-      rides.find(
-        (r) =>
-          r.destination.toLowerCase() === destination.toLowerCase() &&
-          r.departure_date === selectedDate &&
-          r.start_time.slice(0, 5) === selectedTimeInterval.startTime.slice(0, 5)
-      ) || null
+  // All matching ride groups for current flow selection (supports multiple groups in a single slot)
+  const matchingSlotGroups = useMemo(() => {
+    return rides.filter(
+      (r) =>
+        r.destination.toLowerCase() === destination.toLowerCase() &&
+        r.departure_date === selectedDate &&
+        r.start_time.slice(0, 5) === selectedTimeInterval.startTime.slice(0, 5)
     );
   }, [rides, destination, selectedDate, selectedTimeInterval]);
+
+  const bestMatchRide = useMemo(() => {
+    return matchingSlotGroups[0] || null;
+  }, [matchingSlotGroups]);
 
   const otherGroupsLeavingToday = useMemo(() => {
     return rides.filter(
@@ -180,38 +183,64 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setFlowScreen('flow_step5');
   };
 
-  // Open modal for joining a ride (with options: landmark, vehicle, max 12 members)
-  const handleOpenJoinRideModal = (ride?: SlotWithDetails) => {
-    const slotToJoin = ride || bestMatchRide || null;
-    setTargetSlotForModal(slotToJoin);
-    if (slotToJoin) {
-      setDestination(slotToJoin.destination);
-      setSelectedDate(slotToJoin.departure_date);
+  // Direct Join without modal: user directly joins an existing group
+  const handleDirectJoinGroup = async (group: SlotWithDetails) => {
+    const memberCount = group.memberCount || group.members?.length || 1;
+    const targetSeats = group.target_size || 4;
+
+    if (memberCount >= targetSeats) {
+      showToast('error', 'Group Full', 'This ride group is already at maximum capacity.');
+      return;
     }
-    setActionModalMode('join');
-    setActionModalOpen(true);
+
+    setIsSubmittingAction(true);
+    try {
+      const result = await createAndJoinRide({
+        destination: group.destination,
+        departureDate: group.departure_date,
+        startTime: group.start_time,
+        endTime: group.end_time,
+        userId: currentUserId,
+        targetSize: group.target_size,
+        ridePref: group.ride_type || 'auto',
+        slotId: group.id,
+        userName,
+        userAvatar: profile?.avatar_url || user?.picture,
+      });
+
+      await loadRides();
+      if (result) {
+        setSelectedRide(result);
+        setFlowScreen('flow_step4');
+        showToast('success', 'Joined Group', `You joined the ride pool to ${result.destination}!`);
+      }
+    } catch (err: any) {
+      showToast('error', 'Join Failed', err?.message || 'Could not join group.');
+    } finally {
+      setIsSubmittingAction(false);
+    }
   };
 
-  // Open modal for creating a new ride group (with options: destination, date, time, landmark, max 12 members)
+  // Open modal for creating a new ride group (options: vehicle type, number of people)
   const handleOpenCreateGroupModal = () => {
     setTargetSlotForModal(null);
     setActionModalMode('create');
     setActionModalOpen(true);
   };
 
-  // Handle modal confirmation
+  // Handle modal confirmation for creating a brand new group
   const handleConfirmRideAction = async (options: RideActionOptions) => {
     setIsSubmittingAction(true);
     try {
       const result = await createAndJoinRide({
-        destination: options.destination,
-        departureDate: options.departureDate,
-        startTime: options.startTime,
-        endTime: options.endTime,
+        destination: destination, // Always locks to selected destination
+        departureDate: selectedDate,
+        startTime: selectedTimeInterval.startTime,
+        endTime: selectedTimeInterval.endTime,
         userId: currentUserId,
         targetSize: options.targetSize,
         ridePref: options.ridePref,
-        slotId: options.slotId,
+        forceNewGroup: true, // Guarantees creation of a separate group in this slot
         userName,
         userAvatar: profile?.avatar_url || user?.picture,
       });
@@ -224,12 +253,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
         setFlowScreen('flow_step4');
         showToast(
           'success',
-          actionModalMode === 'create' ? 'Ride Group Created' : 'Joined Ride Pool',
-          `Confirmed for ${result.destination} (${result.departure_date})!`
+          'Ride Group Created',
+          `New group created for ${result.destination} (${result.target_size} seats)!`
         );
       }
     } catch (err: any) {
-      showToast('error', 'Action failed', err?.message || 'Could not complete ride action.');
+      showToast('error', 'Action failed', err?.message || 'Could not create ride group.');
     } finally {
       setIsSubmittingAction(false);
     }
@@ -245,14 +274,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
     showToast('info', 'Left Ride', 'You have left the ride group.');
   };
 
+  const handleDeletePastRide = async (slotId: string) => {
+    try {
+      await leaveRideInSupabase(slotId, currentUserId);
+      await loadRides();
+      if (selectedRide?.id === slotId) {
+        setSelectedRide(null);
+        setFlowScreen('home_main');
+      }
+      showToast('info', 'Ride Deleted', 'Completed ride removed from your history.');
+    } catch (err: any) {
+      showToast('error', 'Delete Failed', err?.message || 'Could not remove ride.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FAFAF8] text-[#09090B] flex flex-col justify-between selection:bg-[#09090B] selection:text-white">
-      {/* 1. Universal Top Header - Compact */}
+      {/* 1. Universal Top Header - Compact with real notifications */}
       <AppHeader
         user={user}
         profile={profile}
         currentCampus={selectedCampus}
+        rides={rides}
         onSelectCampus={setSelectedCampus}
+        onOpenRide={handleOpenRideDetails}
         onOpenProfile={() => {
           setCurrentTab('profile');
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -261,7 +306,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       />
 
       {/* 2. Main Content Canvas - Scaled Down & Ergonomic */}
-      <main className="flex-1 w-full max-w-[420px] mx-auto px-3.5 py-2.5 pb-20">
+      <main className="flex-1 w-full max-w-[420px] mx-auto px-3 py-2 pb-20">
         {/* TAB 1: HOME */}
         {currentTab === 'home' && (
           <>
@@ -271,9 +316,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 selectedDestination={destination}
                 onSelectDestination={setDestination}
                 onFindRide={handleStartFindRide}
-                onCreateGroup={handleOpenCreateGroupModal}
-                onJoinRide={handleOpenJoinRideModal}
-                upcomingRides={rides}
+                onJoinRide={handleDirectJoinGroup}
+                upcomingRides={myUpcomingRides}
                 activeStudentsCount={activeStudentsCount}
                 onOpenRideDetails={handleOpenRideDetails}
                 onOpenRideChat={handleOpenRideChat}
@@ -313,10 +357,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 selectedDate={selectedDate}
                 selectedPickup={selectedPickup}
                 selectedTimeInterval={selectedTimeInterval}
-                bestMatchRide={bestMatchRide}
+                slotGroups={matchingSlotGroups}
                 otherGroups={otherGroupsLeavingToday}
-                isUserInRide={Boolean(bestMatchRide?.isUserJoined)}
-                onJoinRide={handleOpenJoinRideModal}
+                currentUserId={currentUserId}
+                onJoinRide={handleDirectJoinGroup}
                 onOpenRide={(ride) => {
                   setSelectedRide(ride);
                   setFlowScreen('flow_step4');
@@ -374,7 +418,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 pastRides={myPastRides}
                 onOpenRideDetails={handleOpenRideDetails}
                 onOpenRideChat={handleOpenRideChat}
-                onFindNewRide={handleOpenCreateGroupModal}
+                onFindNewRide={() => {
+                  setCurrentTab('home');
+                  setFlowScreen('home_main');
+                }}
+                onDeleteRide={handleDeletePastRide}
               />
             )}
           </>
@@ -385,6 +433,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <ProfileView
             user={user}
             profile={profile}
+            currentCampus={selectedCampus}
+            onUpdateCampus={setSelectedCampus}
+            onUpdateProfile={onUpdateProfile}
             onSignOut={onSignOut}
           />
         )}

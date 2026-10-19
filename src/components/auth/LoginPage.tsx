@@ -14,7 +14,7 @@ const STORAGE_KEY_ACTIVE_USER = 'better_ride_active_user';
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const { showToast } = useToast();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -23,6 +23,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>('Male');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // Forgot password flow state
+  const [forgotName, setForgotName] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStep, setForgotStep] = useState<'verify' | 'reset'>('verify');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [verifiedProfile, setVerifiedProfile] = useState<Profile | null>(null);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   // Helper to load and save local backup database
   const getLocalDatabase = (): Record<string, Profile> => {
@@ -97,7 +106,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
       // Password verification
       if (matchedProfile.password && matchedProfile.password !== cleanPassword) {
-        showToast('error', 'Invalid Credentials', 'Incorrect password. Please try again.');
+        showToast('error', 'Invalid Credentials', 'Incorrect password. Please try again or use Forgot Password.');
         setIsSubmitting(false);
         return;
       }
@@ -126,7 +135,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  // Handle Sign Up
+  // Handle Sign Up with duplicate username and email check
   const handleSignUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanName = name.trim();
@@ -148,20 +157,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     try {
       const supabase = getSupabase();
 
-      // Check if email already registered in Supabase
+      // Check if email or username is already registered in Supabase
       if (supabase) {
         try {
-          const { data: existing } = await supabase
+          const { data: existingEmail } = await supabase
             .from('profiles')
             .select('id, email')
             .eq('email', cleanEmail)
             .maybeSingle();
 
-          if (existing) {
+          if (existingEmail) {
             showToast(
               'error',
-              'Account Exists',
-              'An account with this email already exists. Please log in.'
+              'Email Already Registered',
+              'An account with this email already exists. Please log in or reset password.'
+            );
+            setIsSubmitting(false);
+            return;
+          }
+
+          const { data: existingUser } = await supabase
+            .from('profiles')
+            .select('id, display_name')
+            .ilike('display_name', cleanName)
+            .maybeSingle();
+
+          if (existingUser) {
+            showToast(
+              'error',
+              'Username Taken',
+              'This username is already taken. Please choose another username.'
             );
             setIsSubmitting(false);
             return;
@@ -169,13 +194,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         } catch {}
       }
 
-      // Check local database
+      // Check local database for both email and username
       const localDb = getLocalDatabase();
       if (localDb[cleanEmail]) {
         showToast(
           'error',
-          'Account Exists',
-          'An account with this email already exists. Please log in.'
+          'Email Already Registered',
+          'An account with this email already exists. Please log in or reset password.'
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      const isUsernameTakenLocally = Object.values(localDb).some(
+        (u: any) => u.display_name?.trim().toLowerCase() === cleanName.toLowerCase()
+      );
+      if (isUsernameTakenLocally) {
+        showToast(
+          'error',
+          'Username Taken',
+          'This username is already taken. Please choose another username.'
         );
         setIsSubmitting(false);
         return;
@@ -200,11 +238,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       // 1. Store in Supabase database
       if (supabase) {
         try {
-          // Attempt insert with all columns
           const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
-
           if (insertErr) {
-            // Fallback insert if gender or password columns aren't in remote schema yet
             await supabase.from('profiles').upsert({
               id: safeId,
               display_name: cleanName,
@@ -236,16 +271,159 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
   };
 
+  // Handle Forgot Password - Step 1: Verify Name and Email
+  const handleForgotVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = forgotName.trim();
+    const cleanEmail = forgotEmail.trim().toLowerCase();
+
+    if (!cleanName || !cleanEmail) {
+      showToast('error', 'Missing Details', 'Please enter both your registered name and email address.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      let matched: Profile | null = null;
+      const supabase = getSupabase();
+
+      if (supabase) {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', cleanEmail)
+            .maybeSingle();
+
+          if (data && data.display_name?.trim().toLowerCase() === cleanName.toLowerCase()) {
+            matched = data as Profile;
+          }
+        } catch {}
+      }
+
+      if (!matched) {
+        const localDb = getLocalDatabase();
+        const candidate = localDb[cleanEmail];
+        if (candidate && candidate.display_name?.trim().toLowerCase() === cleanName.toLowerCase()) {
+          matched = candidate;
+        }
+      }
+
+      if (!matched) {
+        showToast(
+          'error',
+          'Verification Failed',
+          'The name and email address do not match any registered student account. Please verify both details.'
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      setVerifiedProfile(matched);
+      setForgotStep('reset');
+      showToast(
+        'success',
+        'Identity Verified',
+        `Account confirmed for ${matched.display_name}. Enter your new password below.`
+      );
+    } catch (err: any) {
+      showToast('error', 'Verification Error', err?.message || 'Could not verify account.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle Forgot Password - Step 2: Set New Password
+  const handleForgotReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifiedProfile) return;
+
+    const cleanPass = newPassword.trim();
+    const cleanConfirm = confirmNewPassword.trim();
+
+    if (cleanPass.length < 4) {
+      showToast('error', 'Password Too Short', 'Password must be at least 4 characters long.');
+      return;
+    }
+
+    if (cleanPass !== cleanConfirm) {
+      showToast('error', 'Passwords Do Not Match', 'New password and confirm password must match.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const emailKey = verifiedProfile.email!.toLowerCase();
+
+      // 1. Update Supabase if available
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({
+              password: cleanPass,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('email', emailKey);
+        } catch {}
+      }
+
+      // 2. Update local database
+      const localDb = getLocalDatabase();
+      if (localDb[emailKey]) {
+        localDb[emailKey].password = cleanPass;
+        localDb[emailKey].updated_at = new Date().toISOString();
+        localStorage.setItem(STORAGE_KEY_LOCAL_USERS, JSON.stringify(localDb));
+      }
+
+      // 3. Update active user in localStorage if same email
+      try {
+        const rawActive = localStorage.getItem(STORAGE_KEY_ACTIVE_USER);
+        if (rawActive) {
+          const parsed = JSON.parse(rawActive);
+          if (parsed.email?.toLowerCase() === emailKey) {
+            parsed.password = cleanPass;
+            localStorage.setItem(STORAGE_KEY_ACTIVE_USER, JSON.stringify(parsed));
+          }
+        }
+      } catch {}
+
+      showToast(
+        'success',
+        'Password Reset Successful',
+        'Your password has been updated. Please log in with your new password.'
+      );
+
+      // Return to login mode with email pre-filled
+      setEmail(emailKey);
+      setPassword('');
+      setForgotName('');
+      setForgotEmail('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setVerifiedProfile(null);
+      setForgotStep('verify');
+      setMode('login');
+    } catch (err: any) {
+      showToast('error', 'Reset Failed', err?.message || 'Could not reset password.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col justify-between items-center bg-[#FAFAF8] px-4 py-6 sm:py-8 selection:bg-[#09090B] selection:text-white relative">
       {/* Spacer */}
       <div className="h-4" />
 
       {/* Main Login / Sign Up Card */}
-      <div className="w-full max-w-[350px] my-auto">
-        <div className="bg-white rounded-2xl p-6 sm:p-7 shadow-2xs border border-[#E4E4E7] flex flex-col items-center space-y-5">
-          {/* Better Ride Exact Uploaded Emblem Logo */}
-          <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-[#183F2A]/20 bg-white shadow-sm p-0.5 shrink-0">
+      <div className="w-full max-w-[340px] my-auto">
+        <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-2xs border border-[#E4E4E7] flex flex-col items-center space-y-4">
+          {/* Better Ride Exact Uploaded Emblem Logo - Refined Size */}
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border border-[#E4E4E7] bg-white shadow-2xs p-0.5 shrink-0">
             <img
               src="/better-ride-logo.png"
               alt="Better Ride"
@@ -257,67 +435,91 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </div>
 
           {/* App Branding */}
-          <div className="text-center space-y-1">
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[#09090B] tracking-tight">
+          <div className="text-center space-y-0.5">
+            <h1 className="text-lg sm:text-xl font-extrabold text-[#09090B] tracking-tight">
               Better Ride
             </h1>
-            <p className="text-[11px] text-[#71717A] font-medium">
+            <p className="text-[10px] text-[#71717A] font-medium">
               SRM University-AP Campus Ride Pooling
             </p>
           </div>
 
           {/* Form Header */}
-          <div className="w-full text-center pb-1">
-            <h2 className="text-sm font-bold text-[#09090B]">
-              {mode === 'login' ? 'Sign in to your account' : 'Create student account'}
+          <div className="w-full text-center pb-0.5">
+            <h2 className="text-xs font-bold text-[#09090B]">
+              {mode === 'login'
+                ? 'Sign in to your account'
+                : mode === 'signup'
+                ? 'Create student account'
+                : forgotStep === 'verify'
+                ? 'Reset your password'
+                : 'Set new password'}
             </h2>
-            <p className="text-[11px] text-[#71717A]">
+            <p className="text-[10px] text-[#71717A]">
               {mode === 'login'
                 ? 'Enter your credentials to continue'
-                : 'Fill in your details to register in database'}
+                : mode === 'signup'
+                ? 'Fill in your details to register in database'
+                : forgotStep === 'verify'
+                ? 'Enter your registered name and email to verify'
+                : `Verified for ${verifiedProfile?.email}`}
             </p>
           </div>
 
-          {/* LOGIN FORM */}
-          {mode === 'login' ? (
-            <form onSubmit={handleLoginSubmit} className="w-full space-y-3.5">
+          {/* 1. LOGIN FORM */}
+          {mode === 'login' && (
+            <form onSubmit={handleLoginSubmit} className="w-full space-y-2.5">
               <div>
-                <label className="block text-[11px] font-bold text-[#3F3F46] mb-1">
+                <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
                   Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Mail className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="student@srmist.edu.in"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#3F3F46] mb-1">
-                  Password
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-bold text-[#3F3F46]">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setForgotStep('verify');
+                      setForgotName('');
+                      setForgotEmail(email);
+                    }}
+                    className="text-[10px] font-semibold text-[#71717A] hover:text-[#09090B] hover:underline cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Lock className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
-                    className="w-full pl-9 pr-9 py-2 rounded-xl border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                    className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#09090B] cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#09090B] cursor-pointer"
                   >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   </button>
                 </div>
               </div>
@@ -325,49 +527,51 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full h-10 mt-1 rounded-xl bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                className="w-full h-8.5 mt-1 rounded-lg bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
               >
                 {isSubmitting ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <span>Log In</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <ArrowRight className="w-3 h-3" />
                   </>
                 )}
               </button>
             </form>
-          ) : (
-            /* SIGN UP FORM */
-            <form onSubmit={handleSignUpSubmit} className="w-full space-y-3">
+          )}
+
+          {/* 2. SIGN UP FORM */}
+          {mode === 'signup' && (
+            <form onSubmit={handleSignUpSubmit} className="w-full space-y-2.5">
               <div>
-                <label className="block text-[11px] font-bold text-[#3F3F46] mb-1">
-                  Full Name
+                <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
+                  Full Name (Username)
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <User className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Rahul Sharma"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#3F3F46] mb-1">
+                <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
                   Gender
                 </label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1">
                   {(['Male', 'Female', 'Other'] as const).map((g) => (
                     <button
                       key={g}
                       type="button"
                       onClick={() => setGender(g)}
-                      className={`py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer text-center ${
+                      className={`py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer text-center ${
                         gender === g
                           ? 'bg-[#09090B] text-white border-[#09090B] shadow-2xs'
                           : 'bg-white text-[#71717A] border-[#E4E4E7] hover:border-gray-400'
@@ -380,42 +584,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#3F3F46] mb-1">
+                <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
                   Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Mail className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="student@srmist.edu.in"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-[#3F3F46] mb-1">
+                <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
                   Password
                 </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Lock className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Create a password (min 4 chars)"
-                    className="w-full pl-9 pr-9 py-2 rounded-xl border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                    className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#09090B] cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#09090B] cursor-pointer"
                   >
-                    {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                   </button>
                 </div>
               </div>
@@ -423,22 +627,148 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full h-10 mt-1 rounded-xl bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                className="w-full h-8.5 mt-1 rounded-lg bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
               >
                 {isSubmitting ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <span>Create Account</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <ArrowRight className="w-3 h-3" />
                   </>
                 )}
               </button>
             </form>
           )}
 
+          {/* 3. FORGOT PASSWORD FORM */}
+          {mode === 'forgot' && (
+            <div className="w-full space-y-2.5">
+              {forgotStep === 'verify' ? (
+                /* Step 1: Verify Name & Email */
+                <form onSubmit={handleForgotVerify} className="space-y-2.5">
+                  <div className="bg-[#F4F4F5] p-2 rounded-lg text-[10px] text-[#71717A] leading-relaxed">
+                    Enter the exact <strong>Full Name</strong> and <strong>Email Address</strong> registered with your account to verify your identity.
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
+                      Full Name
+                    </label>
+                    <div className="relative">
+                      <User className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        required
+                        value={forgotName}
+                        onChange={(e) => setForgotName(e.target.value)}
+                        placeholder="Enter your registered name"
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="email"
+                        required
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="student@srmist.edu.in"
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full h-8.5 mt-1 rounded-lg bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span>Verify Account Details</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              ) : (
+                /* Step 2: Set New Password (only displayed when name and email match correctly) */
+                <form onSubmit={handleForgotReset} className="space-y-2.5">
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-semibold leading-relaxed">
+                    Identity verified for <strong>{verifiedProfile?.display_name}</strong> ({verifiedProfile?.email}). Enter your new password below.
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
+                      New Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password (min 4 chars)"
+                        className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword((prev) => !prev)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#09090B] cursor-pointer"
+                      >
+                        {showNewPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#3F3F46] mb-1">
+                      Confirm New Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-3.5 h-3.5 text-[#A1A1AA] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Re-enter new password"
+                        className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-[#E4E4E7] focus:border-[#09090B] focus:ring-1 focus:ring-[#09090B] outline-none text-xs text-[#09090B] bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full h-8.5 mt-1 rounded-lg bg-[#09090B] hover:bg-[#18181B] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span>Change Password</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
           {/* Bottom Switcher */}
-          <div className="w-full pt-3 border-t border-[#E4E4E7] text-center">
+          <div className="w-full pt-2.5 border-t border-[#E4E4E7] text-center">
             {mode === 'login' ? (
               <p className="text-xs text-[#71717A]">
                 Don't have an account?{' '}
@@ -453,13 +783,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                   Sign up
                 </button>
               </p>
-            ) : (
+            ) : mode === 'signup' ? (
               <p className="text-xs text-[#71717A]">
                 Already have an account?{' '}
                 <button
                   type="button"
                   onClick={() => {
                     setMode('login');
+                    setPassword('');
+                  }}
+                  className="font-bold text-[#09090B] hover:underline cursor-pointer"
+                >
+                  Log in
+                </button>
+              </p>
+            ) : (
+              <p className="text-xs text-[#71717A]">
+                Remember your password?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setForgotStep('verify');
                     setPassword('');
                   }}
                   className="font-bold text-[#09090B] hover:underline cursor-pointer"

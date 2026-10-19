@@ -95,6 +95,75 @@ export function formatTime12(timeString: string): string {
 }
 
 /**
+ * Get current time in Asia/Kolkata timezone
+ */
+export function getCurrentISTTime(): { hours: number; minutes: number; timeStr: string } {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CAMPUS_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+
+  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10);
+  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+  const second = parseInt(parts.find((p) => p.type === 'second')?.value || '0', 10);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+
+  return {
+    hours: hour,
+    minutes: minute,
+    timeStr: `${pad(hour)}:${pad(minute)}:${pad(second)}`,
+  };
+}
+
+/**
+ * Check if a ride slot has completed based on its date and end time in IST.
+ * If today is the departure date, the ride is marked complete as soon as the slot end_time has passed
+ * (e.g. for a 7:00 to 7:30 PM slot, it completes at 7:30 PM).
+ */
+export function isRideCompleted(departureDate: string, endTime: string): boolean {
+  if (!departureDate) return false;
+  const todayStr = getTodayISTDateString();
+
+  if (departureDate < todayStr) return true;
+  if (departureDate > todayStr) return false;
+
+  // It is today. Compare endTime to current IST time
+  const currentIST = getCurrentISTTime().timeStr;
+  const padTime = (t: string) => {
+    if (!t) return '00:00:00';
+    const parts = t.split(':');
+    const h = (parts[0] || '00').padStart(2, '0');
+    const m = (parts[1] || '00').padStart(2, '0');
+    const s = (parts[2] || '00').padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
+
+  return currentIST >= padTime(endTime);
+}
+
+/**
+ * Calculate minutes remaining until a ride starts (returns null if not today or past)
+ */
+export function getMinutesUntilRide(departureDate: string, startTime: string): number | null {
+  const todayStr = getTodayISTDateString();
+  if (departureDate !== todayStr || !startTime) return null;
+
+  const current = getCurrentISTTime();
+  const parts = startTime.split(':').map(Number);
+  const slotHour = parts[0] || 0;
+  const slotMinute = parts[1] || 0;
+
+  const currentTotalMins = current.hours * 60 + current.minutes;
+  const slotTotalMins = slotHour * 60 + slotMinute;
+
+  return slotTotalMins - currentTotalMins;
+}
+
+/**
  * Format message created_at timestamp in Asia/Kolkata
  */
 export function formatMessageTime(isoString: string): string {

@@ -74,6 +74,8 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
       : toValidUuid(currentUserId)
     : undefined;
 
+  let supabaseRides: SlotWithDetails[] = [];
+
   if (supabase) {
     try {
       // 1. Fetch time slots from Supabase
@@ -125,7 +127,7 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
           } catch {}
         }
 
-        const result: SlotWithDetails[] = slotsData.map((slot: any) => {
+        supabaseRides = slotsData.map((slot: any) => {
           const slotMembers: SlotMember[] = membersData
             .filter((m) => m.slot_id === slot.id)
             .map((m, idx) => {
@@ -182,19 +184,38 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             isUserJoined,
           };
         });
-
-        // Keep local cache fresh with latest data from Supabase
-        saveLocalRides(result);
-        return result;
       }
     } catch (err) {
-      console.warn('Supabase fetchAllRides error, falling back to local store:', err);
+      console.warn('Supabase fetchAllRides error:', err);
     }
   }
 
-  // Fallback to local store if offline
+  // Merge supabaseRides and localRides so local/offline-created rides are never lost
   const localRides = loadLocalRides();
-  return localRides.map((slot) => {
+  const rideMap = new Map<string, SlotWithDetails>();
+
+  // Add local rides first so local creations are preserved
+  localRides.forEach((r) => rideMap.set(r.id, r));
+
+  // Add/override with Supabase rides
+  supabaseRides.forEach((r) => {
+    const existing = rideMap.get(r.id);
+    if (existing) {
+      const memberMap = new Map<string, any>();
+      existing.members?.forEach((m) => memberMap.set(m.user_id || m.id, m));
+      r.members?.forEach((m) => memberMap.set(m.user_id || m.id, m));
+      rideMap.set(r.id, {
+        ...r,
+        members: Array.from(memberMap.values()),
+        memberCount: memberMap.size,
+        isUserJoined: existing.isUserJoined || r.isUserJoined,
+      });
+    } else {
+      rideMap.set(r.id, r);
+    }
+  });
+
+  const mergedRides = Array.from(rideMap.values()).map((slot) => {
     const isUserJoined = Boolean(
       safeCurrentUserId && slot.members.some((m) => m.user_id === safeCurrentUserId)
     );
@@ -204,6 +225,9 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
       memberCount: slot.members.length,
     };
   });
+
+  saveLocalRides(mergedRides);
+  return mergedRides;
 }
 
 /**
@@ -220,6 +244,7 @@ export async function createAndJoinRide(params: {
   slotId?: string;
   userName?: string;
   userAvatar?: string;
+  forceNewGroup?: boolean;
 }): Promise<SlotWithDetails | null> {
   const {
     destination,
@@ -232,6 +257,7 @@ export async function createAndJoinRide(params: {
     slotId: targetSlotId,
     userName = 'Student',
     userAvatar,
+    forceNewGroup = false,
   } = params;
 
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
@@ -243,7 +269,7 @@ export async function createAndJoinRide(params: {
       let slotId: string = targetSlotId || '';
       let slotRecord: any;
 
-      if (slotId) {
+      if (slotId && isValidUuid(slotId)) {
         const { data: byId } = await supabase
           .from('time_slots')
           .select('*')
@@ -252,58 +278,44 @@ export async function createAndJoinRide(params: {
         slotRecord = byId;
       }
 
-      if (!slotRecord) {
-        // Check if an existing slot matches destination, departure_date & start_time
-        const { data: existingSlots } = await supabase
+      // If no specific slot requested or forceNewGroup requested, create a brand new distinct slot
+      if (!slotRecord || forceNewGroup || !isValidUuid(slotId)) {
+        const { data: newSlot, error: createErr } = await supabase
           .from('time_slots')
-          .select('*')
-          .eq('departure_date', departureDate)
-          .eq('destination', destination)
-          .eq('start_time', startTime)
-          .limit(1);
+          .insert({
+            destination,
+            departure_date: departureDate,
+            start_time: startTime,
+            end_time: endTime,
+          })
+          .select()
+          .maybeSingle();
 
-        if (existingSlots && existingSlots.length > 0) {
-          slotRecord = existingSlots[0];
-          slotId = slotRecord.id;
-        } else {
-          // Insert slot into Supabase with standard supported schema columns
-          const { data: newSlot, error: createErr } = await supabase
-            .from('time_slots')
-            .insert({
-              destination,
-              departure_date: departureDate,
-              start_time: startTime,
-              end_time: endTime,
-            })
-            .select()
-            .single();
-
-          if (createErr || !newSlot) {
-            console.error('Supabase time_slots insert error:', createErr);
-            throw createErr;
-          }
-          slotRecord = newSlot;
-          slotId = newSlot.id;
+        if (createErr || !newSlot || !newSlot.id || !isValidUuid(newSlot.id)) {
+          throw createErr || new Error('Failed to create valid time slot in Supabase');
         }
+        slotRecord = newSlot;
+        slotId = newSlot.id;
       }
 
-      // Check if user is already in slot_members for this slot
-      const { data: existingMember } = await supabase
-        .from('slot_members')
-        .select('id')
-        .eq('slot_id', slotId)
-        .eq('user_id', validUserId)
-        .maybeSingle();
+      if (isValidUuid(slotId) && isValidUuid(validUserId)) {
+        // Check if user is already in slot_members for this slot
+        const { data: existingMember } = await supabase
+          .from('slot_members')
+          .select('id')
+          .eq('slot_id', slotId)
+          .eq('user_id', validUserId)
+          .maybeSingle();
 
-      if (!existingMember) {
-        const { error: memberInsertErr } = await supabase.from('slot_members').insert({
-          slot_id: slotId,
-          user_id: validUserId,
-        });
+        if (!existingMember) {
+          const { error: memberInsertErr } = await supabase.from('slot_members').insert({
+            slot_id: slotId,
+            user_id: validUserId,
+          });
 
-        if (memberInsertErr) {
-          console.error('Supabase slot_members insert error:', memberInsertErr);
-          throw memberInsertErr;
+          if (memberInsertErr) {
+            console.warn('Supabase slot_members insert notice:', memberInsertErr);
+          }
         }
       }
 
@@ -320,17 +332,8 @@ export async function createAndJoinRide(params: {
   const localRides = loadLocalRides();
   let existingIndex = -1;
 
-  if (targetSlotId) {
+  if (targetSlotId && !forceNewGroup) {
     existingIndex = localRides.findIndex((s) => s.id === targetSlotId);
-  }
-
-  if (existingIndex < 0) {
-    existingIndex = localRides.findIndex(
-      (s) =>
-        s.destination.toLowerCase() === destination.toLowerCase() &&
-        s.departure_date === departureDate &&
-        s.start_time.slice(0, 5) === startTime.slice(0, 5)
-    );
   }
 
   const newMember: SlotMember = {
@@ -356,15 +359,18 @@ export async function createAndJoinRide(params: {
     const existing = localRides[existingIndex];
     newMember.slot_id = existing.id;
     if (!existing.members.some((m) => m.user_id === validUserId)) {
-      existing.members.push(newMember);
-      existing.memberCount = existing.members.length;
-      existing.isUserJoined = true;
+      if ((existing.members.length || 0) < (existing.target_size || 4)) {
+        existing.members.push(newMember);
+        existing.memberCount = existing.members.length;
+        existing.isUserJoined = true;
+      }
     }
     saveLocalRides(localRides);
     return existing;
   }
 
-  const newSlotId = toValidUuid(`slot-${Date.now()}`);
+  // Brand new group created
+  const newSlotId = toValidUuid(`slot-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
   newMember.slot_id = newSlotId;
 
   const newRide: SlotWithDetails = {
@@ -461,6 +467,7 @@ export const SHARED_SYSTEM_AUTH_USER = 'c52674ed-5f25-4340-8be9-4bf707126266';
  * Fetch messages for a slot directly from Supabase (with resilient parsing & fallback)
  */
 export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
+  let supabaseMsgs: Message[] = [];
   const supabase = getSupabase();
   if (supabase) {
     try {
@@ -471,7 +478,7 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        return data.map((d: any) => {
+        supabaseMsgs = data.map((d: any) => {
           let author = 'Student';
           let authorId = d.user_id;
           let text = d.content;
@@ -510,11 +517,39 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
   }
 
   const allMsgs = loadLocalMessages();
-  return allMsgs[slotId] || [];
+  const localMsgs = allMsgs[slotId] || [];
+
+  // Also check legacy local_chat_ storage key
+  let legacyMsgs: Message[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const rawLegacy = localStorage.getItem(`local_chat_${slotId}`);
+      if (rawLegacy) {
+        const parsed = JSON.parse(rawLegacy);
+        if (Array.isArray(parsed)) legacyMsgs = parsed;
+      }
+    } catch {}
+  }
+
+  // Merge supabaseMsgs, localMsgs, and legacyMsgs by message id or content/timestamp
+  const msgMap = new Map<string, Message>();
+  legacyMsgs.forEach((m) => msgMap.set(m.id || `${m.created_at}-${m.content}`, m));
+  localMsgs.forEach((m) => msgMap.set(m.id || `${m.created_at}-${m.content}`, m));
+  supabaseMsgs.forEach((m) => msgMap.set(m.id || `${m.created_at}-${m.content}`, m));
+
+  const mergedMsgs = Array.from(msgMap.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  // Update local cache
+  allMsgs[slotId] = mergedMsgs;
+  saveLocalMessages(allMsgs);
+
+  return mergedMsgs;
 }
 
 /**
- * Post a message to a slot in Supabase (synced across all joined devices)
+ * Post a message to a slot (hybrid local persistence + Supabase background sync)
  */
 export async function postMessageToSlot(
   slotId: string,
@@ -527,52 +562,8 @@ export async function postMessageToSlot(
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
   const senderName = userName || 'Student';
 
-  const payload = JSON.stringify({
-    author: senderName,
-    authorId: validUserId,
-    text: trimmed,
-  });
-
-  const supabase = getSupabase();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('messages')
-        .insert({
-          slot_id: slotId,
-          user_id: SHARED_SYSTEM_AUTH_USER,
-          content: payload,
-        })
-        .select('*')
-        .single();
-
-      if (!error && data) {
-        return {
-          id: data.id,
-          slot_id: data.slot_id,
-          user_id: validUserId,
-          content: trimmed,
-          created_at: data.created_at,
-          profile: {
-            id: validUserId,
-            display_name: senderName,
-            email: null,
-            avatar_url: null,
-            created_at: data.created_at,
-            updated_at: data.created_at,
-          },
-        };
-      } else if (error) {
-        console.error('postMessageToSlot Supabase error:', error);
-      }
-    } catch (e) {
-      console.warn('postMessageToSlot Supabase notice:', e);
-    }
-  }
-
-  // Local fallback
   const localMsg: Message = {
-    id: toValidUuid(`msg-${Date.now()}`),
+    id: toValidUuid(`msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`),
     slot_id: slotId,
     user_id: validUserId,
     content: trimmed,
@@ -587,11 +578,44 @@ export async function postMessageToSlot(
     },
   };
 
+  // 1. Save locally immediately to guarantee it persists and displays instantly
   const allMsgs = loadLocalMessages();
   if (!allMsgs[slotId]) {
     allMsgs[slotId] = [];
   }
   allMsgs[slotId].push(localMsg);
   saveLocalMessages(allMsgs);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const legacyKey = `local_chat_${slotId}`;
+      const existingLegacy = localStorage.getItem(legacyKey);
+      let parsedLegacy: Message[] = existingLegacy ? JSON.parse(existingLegacy) : [];
+      if (!parsedLegacy.some((m) => m.id === localMsg.id)) {
+        parsedLegacy.push(localMsg);
+        localStorage.setItem(legacyKey, JSON.stringify(parsedLegacy));
+      }
+    } catch {}
+  }
+
+  // 2. Try posting to Supabase in background if valid UUID
+  const supabase = getSupabase();
+  if (supabase && isValidUuid(slotId)) {
+    try {
+      const payload = JSON.stringify({
+        author: senderName,
+        authorId: validUserId,
+        text: trimmed,
+      });
+      await supabase.from('messages').insert({
+        slot_id: slotId,
+        user_id: SHARED_SYSTEM_AUTH_USER,
+        content: payload,
+      });
+    } catch (e) {
+      // Supabase insert failed, but local message is already stored and returned!
+    }
+  }
+
   return localMsg;
 }
