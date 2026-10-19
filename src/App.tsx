@@ -1,0 +1,260 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { getSupabase, isSupabaseConfigured, signOut as supabaseSignOut, ensureAuthenticatedSession } from './lib/supabase';
+import {
+  getSavedGoogleUser,
+  clearGoogleUser,
+  GoogleUserProfile,
+} from './lib/google-auth';
+import { toValidUuid, isValidUuid } from './lib/uuid-utils';
+import { Profile } from './types/database';
+import { ToastProvider, useToast } from './components/ui/Toast';
+import { LoginPage } from './components/auth/LoginPage';
+import { Dashboard } from './components/dashboard/Dashboard';
+
+function AppContent() {
+  const { showToast } = useToast();
+  const [session, setSession] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Sync / fetch authenticated user profile from Supabase or Google session
+  const syncUserProfile = useCallback(async (authUser: any) => {
+    if (!authUser) {
+      setProfile(null);
+      return;
+    }
+
+    const displayName =
+      authUser.user_metadata?.full_name ||
+      authUser.user_metadata?.name ||
+      authUser.name ||
+      authUser.email?.split('@')[0] ||
+      'Student';
+    const avatarUrl =
+      authUser.user_metadata?.avatar_url ||
+      authUser.user_metadata?.picture ||
+      authUser.picture ||
+      null;
+
+    const safeId = isValidUuid(authUser.id) ? authUser.id : toValidUuid(authUser.id);
+
+    const fallbackProfile: Profile = {
+      id: safeId,
+      display_name: displayName,
+      email: authUser.email || null,
+      avatar_url: avatarUrl,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (!isSupabaseConfigured()) {
+      setProfile(fallbackProfile);
+      return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) {
+      setProfile(fallbackProfile);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', safeId)
+        .maybeSingle();
+
+      if (!error && data) {
+        setProfile(data as Profile);
+      } else {
+        const { data: newProfile, error: upsertErr } = await supabase
+          .from('profiles')
+          .upsert({
+            id: safeId,
+            display_name: displayName,
+            email: authUser.email,
+            avatar_url: avatarUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .maybeSingle();
+
+        if (!upsertErr && newProfile) {
+          setProfile(newProfile as Profile);
+        } else {
+          setProfile(fallbackProfile);
+        }
+      }
+    } catch {
+      setProfile(fallbackProfile);
+    }
+  }, []);
+
+  // Initialize authentication
+  useEffect(() => {
+    let isMounted = true;
+
+    const initAuth = async () => {
+      // 1. Check for saved Google Identity user
+      const savedGoogleUser = getSavedGoogleUser();
+      if (savedGoogleUser && isMounted) {
+        const validId = isValidUuid(savedGoogleUser.id) ? savedGoogleUser.id : toValidUuid(savedGoogleUser.id);
+        const u = {
+          id: validId,
+          email: savedGoogleUser.email,
+          name: savedGoogleUser.name,
+          picture: savedGoogleUser.picture,
+          user_metadata: {
+            full_name: savedGoogleUser.name,
+            avatar_url: savedGoogleUser.picture,
+          },
+        };
+        setUser(u);
+        syncUserProfile(u);
+      }
+
+      // 2. Check Supabase session if configured
+      if (isSupabaseConfigured()) {
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            const { data: { session: initialSession } } = await supabase.auth.getSession();
+            if (initialSession?.user && isMounted) {
+              setSession(initialSession);
+              setUser(initialSession.user);
+              syncUserProfile(initialSession.user);
+            }
+          } catch (e) {
+            console.warn('Session check error:', e);
+          }
+        }
+      }
+
+      if (isMounted) setLoading(false);
+    };
+
+    initAuth();
+
+    // Clean hash fragment from URL if redirected from OAuth callback
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    // Subscribe to Supabase auth changes if configured
+    if (isSupabaseConfigured()) {
+      const supabase = getSupabase();
+      if (supabase) {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+          if (!isMounted) return;
+
+          setSession(newSession);
+          if (newSession?.user) {
+            setUser(newSession.user);
+            await syncUserProfile(newSession.user);
+            if (event === 'SIGNED_IN') {
+              showToast('success', 'Signed In', `Welcome, ${newSession.user.user_metadata?.full_name || 'traveler'}!`);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setUser(null);
+            setProfile(null);
+          }
+        });
+
+        return () => {
+          isMounted = false;
+          subscription.unsubscribe();
+        };
+      }
+    }
+  }, [syncUserProfile, showToast]);
+
+  const handleGoogleSuccess = async (googleUser: GoogleUserProfile) => {
+    let finalId = googleUser.id;
+
+    if (isSupabaseConfigured()) {
+      const supabaseUid = await ensureAuthenticatedSession({
+        name: googleUser.name,
+        email: googleUser.email,
+        avatarUrl: googleUser.picture,
+      });
+      if (supabaseUid) {
+        finalId = supabaseUid;
+      }
+    }
+
+    if (!isValidUuid(finalId)) {
+      finalId = toValidUuid(finalId);
+    }
+
+    const formattedUser = {
+      id: finalId,
+      email: googleUser.email,
+      name: googleUser.name,
+      picture: googleUser.picture,
+      user_metadata: {
+        full_name: googleUser.name,
+        avatar_url: googleUser.picture,
+      },
+    };
+    setUser(formattedUser);
+    syncUserProfile(formattedUser);
+    showToast('success', 'Signed In', `Welcome, ${googleUser.name}!`);
+  };
+
+  const handleSignOut = async () => {
+    clearGoogleUser();
+    try {
+      await supabaseSignOut();
+    } catch {}
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F1F7F0] text-[#183F2A]">
+        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#245C3A]/20 bg-white p-1 shadow-md mb-4 animate-pulse">
+          <img
+            src="/better-campus-logo.png"
+            alt="Loading Travel Buddy Finder"
+            className="w-full h-full object-contain rounded-full"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/better-campus-logo.jpg';
+            }}
+          />
+        </div>
+        <div className="w-6 h-6 border-2 border-[#245C3A] border-t-transparent rounded-full animate-spin mb-2" />
+        <p className="text-xs font-bold text-[#245C3A] tracking-wider uppercase">
+          Loading Travel Buddy Finder...
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {!user ? (
+        <LoginPage onGoogleSuccess={handleGoogleSuccess} />
+      ) : (
+        <Dashboard
+          user={user}
+          profile={profile}
+          onSignOut={handleSignOut}
+        />
+      )}
+    </>
+  );
+}
+
+export function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
+  );
+}
+
+export default App;

@@ -1,0 +1,6 @@
+{
+  "name": "Travel Buddy Finder",
+  "description": "Find your people. Share your ride. Connect with SRM University-AP students leaving campus together.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
