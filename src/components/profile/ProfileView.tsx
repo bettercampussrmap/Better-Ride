@@ -171,12 +171,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     <div className="space-y-3 animate-in fade-in duration-150 pb-6">
       {/* Header - Clean */}
       <div className="space-y-0.2 pt-0.5">
-        <h1 className="text-lg sm:text-xl font-extrabold text-[#09090B] tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-extrabold text-[#09090B] tracking-tight">
           Profile
         </h1>
-        <p className="text-[10px] text-[#71717A] font-medium">
-          Manage your account credentials and campus feedback
-        </p>
       </div>
 
       {/* SECTION 1: Personal Details (Editable name, password, campus; locked email) */}

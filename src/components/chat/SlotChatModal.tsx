@@ -160,6 +160,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
   if (!slot) return null;
 
   const handleSendMessage = async (textToSend?: string) => {
+    if (sending) return; // Prevent double sending
     const raw = textToSend !== undefined ? textToSend : inputText;
     const trimmed = raw.trim();
     if (!trimmed) return;

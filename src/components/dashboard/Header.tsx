@@ -60,12 +60,9 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden border-2 border-[#245C3A]/20 bg-white p-0.5 shadow-xs shrink-0">
             <img
-              src="/better-ride-logo.png"
+              src="/assets/aistudio/Gemini_Generated_Image_5av8f85av8f85av8_f440b7ed.png"
               alt="Better Ride"
               className="w-full h-full object-cover rounded-full"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
-              }}
             />
           </div>
           <div>

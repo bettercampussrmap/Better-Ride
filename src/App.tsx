@@ -258,12 +258,9 @@ function AppContent() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAFAF8] text-[#09090B]">
         <div className="w-16 h-16 rounded-full overflow-hidden border border-[#E4E4E7] bg-white shadow-sm mb-3">
           <img
-            src="/better-ride-logo.png"
+            src="/assets/aistudio/Gemini_Generated_Image_5av8f85av8f85av8_f440b7ed.png"
             alt="Better Ride"
             className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
-            }}
           />
         </div>
         <div className="w-5 h-5 border-2 border-[#09090B] border-t-transparent rounded-full animate-spin mb-2" />

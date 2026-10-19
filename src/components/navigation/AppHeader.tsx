@@ -141,19 +141,16 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#FAFAF8] border-b border-[#E4E4E7] px-3 py-1.5 transition-all">
+    <header className="sticky top-0 z-40 bg-[#FAFAF8] border-b border-[#E4E4E7] px-4 py-2.5 transition-all">
       <div className="max-w-[420px] mx-auto flex items-center justify-between gap-2">
         {/* Brand section */}
         <div className="flex items-center gap-2">
           {/* Logo - Scaled to compact 7x7 */}
           <div className="w-7 h-7 rounded-full overflow-hidden border border-[#E4E4E7] bg-white shrink-0 shadow-2xs">
             <img
-              src="/better-ride-logo.png"
+              src="/assets/aistudio/Gemini_Generated_Image_5av8f85av8f85av8_f440b7ed.png"
               alt="Better Ride Logo"
               className="w-full h-full object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
-              }}
             />
           </div>
 
@@ -228,7 +225,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
             {/* Notifications Popover */}
             {notificationsOpen && (
-              <div className="absolute right-0 top-full mt-2 w-76 sm:w-84 bg-white rounded-2xl shadow-2xl border border-[#E4E4E7] p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute right-0 mt-2 w-[calc(100vw-2.5rem)] sm:w-84 max-w-sm bg-white rounded-2xl shadow-2xl border border-[#E4E4E7] p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#E4E4E7]">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-extrabold text-[#09090B]">Notifications</span>

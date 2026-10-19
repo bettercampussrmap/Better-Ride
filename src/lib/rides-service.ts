@@ -120,28 +120,37 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
 
         // Check local users cache for friendly names
         let localUsers: Record<string, any> = {};
+        let usersById: Record<string, any> = {};
         if (typeof window !== 'undefined') {
           try {
             const raw = localStorage.getItem('better_ride_database_users');
             if (raw) localUsers = JSON.parse(raw);
+            const rawById = localStorage.getItem('better_ride_users_by_id');
+            if (rawById) usersById = JSON.parse(rawById);
           } catch {}
         }
 
         supabaseRides = slotsData.map((slot: any) => {
           const slotMembers: SlotMember[] = membersData
             .filter((m) => m.slot_id === slot.id)
-            .map((m, idx) => {
+            .map((m) => {
               const matchedProf = profileMap.get(m.user_id);
+              const matchedById = usersById[m.user_id];
               const matchedLocal = Object.values(localUsers).find(
                 (u: any) => u.id === m.user_id
               ) as any;
               const isCurrentUser = safeCurrentUserId && m.user_id === safeCurrentUserId;
 
-              const fallbackName = isCurrentUser
-                ? 'You (Student)'
-                : matchedProf?.display_name ||
-                  matchedLocal?.display_name ||
-                  `Student ${idx + 1}`;
+              const realName =
+                matchedProf?.display_name ||
+                matchedById?.display_name ||
+                matchedLocal?.display_name;
+
+              const fallbackName = realName
+                ? realName
+                : isCurrentUser
+                ? 'You'
+                : 'Campus Member';
 
               const prof: Profile = {
                 id: m.user_id,

@@ -45,11 +45,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   };
 
   const saveToLocalDatabase = (profile: Profile) => {
-    if (typeof window === 'undefined' || !profile.email) return;
+    if (typeof window === 'undefined') return;
     try {
-      const db = getLocalDatabase();
-      db[profile.email.toLowerCase()] = profile;
-      localStorage.setItem(STORAGE_KEY_LOCAL_USERS, JSON.stringify(db));
+      if (profile.email) {
+        const db = getLocalDatabase();
+        db[profile.email.toLowerCase()] = profile;
+        localStorage.setItem(STORAGE_KEY_LOCAL_USERS, JSON.stringify(db));
+      }
+      if (profile.id) {
+        const byIdRaw = localStorage.getItem('better_ride_users_by_id');
+        const byId = byIdRaw ? JSON.parse(byIdRaw) : {};
+        byId[profile.id] = profile;
+        localStorage.setItem('better_ride_users_by_id', JSON.stringify(byId));
+      }
     } catch {}
   };
 
@@ -116,7 +124,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         ? matchedProfile.id
         : toValidUuid(`srm-student-${cleanEmail}`);
 
-      // Save session
+      // Save session and local database registry
+      saveToLocalDatabase(matchedProfile);
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY_ACTIVE_USER, JSON.stringify(matchedProfile));
       }
@@ -157,7 +166,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     try {
       const supabase = getSupabase();
 
-      // Check if email or username is already registered in Supabase
       if (supabase) {
         try {
           const { data: existingEmail } = await supabase
@@ -175,45 +183,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             setIsSubmitting(false);
             return;
           }
-
-          const { data: existingUser } = await supabase
-            .from('profiles')
-            .select('id, display_name')
-            .ilike('display_name', cleanName)
-            .maybeSingle();
-
-          if (existingUser) {
-            showToast(
-              'error',
-              'Username Taken',
-              'This username is already taken. Please choose another username.'
-            );
-            setIsSubmitting(false);
-            return;
-          }
         } catch {}
       }
 
-      // Check local database for both email and username
+      // Check local database for email
       const localDb = getLocalDatabase();
       if (localDb[cleanEmail]) {
         showToast(
           'error',
           'Email Already Registered',
           'An account with this email already exists. Please log in or reset password.'
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      const isUsernameTakenLocally = Object.values(localDb).some(
-        (u: any) => u.display_name?.trim().toLowerCase() === cleanName.toLowerCase()
-      );
-      if (isUsernameTakenLocally) {
-        showToast(
-          'error',
-          'Username Taken',
-          'This username is already taken. Please choose another username.'
         );
         setIsSubmitting(false);
         return;
@@ -422,15 +401,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       {/* Main Login / Sign Up Card */}
       <div className="w-full max-w-[340px] my-auto">
         <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-2xs border border-[#E4E4E7] flex flex-col items-center space-y-4">
-          {/* Better Ride Exact Uploaded Emblem Logo - Refined Size */}
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border border-[#E4E4E7] bg-white shadow-2xs p-0.5 shrink-0">
+          {/* Better Ride Exact Uploaded Emblem Logo - Large and Prominent */}
+          <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full overflow-hidden border-2 border-[#E4E4E7] bg-white shadow-lg p-1 shrink-0 mb-4">
             <img
-              src="/better-ride-logo.png"
+              src="/assets/aistudio/Gemini_Generated_Image_5av8f85av8f85av8_f440b7ed.png"
               alt="Better Ride"
               className="w-full h-full object-cover rounded-full"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
-              }}
             />
           </div>
 

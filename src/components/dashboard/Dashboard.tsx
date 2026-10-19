@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppHeader } from '../navigation/AppHeader';
 import { BottomNavigation, NavTab } from '../navigation/BottomNavigation';
 import { HomeView } from '../home/HomeView';
@@ -113,6 +113,74 @@ export const Dashboard: React.FC<DashboardProps> = ({
       clearInterval(interval);
     };
   }, [loadRides]);
+
+  // Mobile Back Button Navigation Handler
+  const lastBackPressTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', window.location.href);
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      // 1. If modal is open, close modal
+      if (actionModalOpen) {
+        setActionModalOpen(false);
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+
+      // 2. If inside multi-step flow, go back one step
+      if (flowScreen === 'flow_step5') {
+        setFlowScreen('flow_step4');
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+      if (flowScreen === 'flow_step4') {
+        setFlowScreen('flow_step3');
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+      if (flowScreen === 'flow_step3') {
+        setFlowScreen('flow_step2');
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+      if (flowScreen === 'flow_step2') {
+        setFlowScreen('flow_step1');
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+      if (flowScreen === 'flow_step1') {
+        setFlowScreen('home_main');
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+
+      // 3. If on non-home tab (My Rides or Profile), go back to Home tab
+      if (currentTab !== 'home') {
+        setCurrentTab('home');
+        setFlowScreen('home_main');
+        window.history.pushState(null, '', window.location.href);
+        return;
+      }
+
+      // 4. On root / first page ('home' tab, 'home_main', no modals) -> require 2 presses to exit app
+      const now = Date.now();
+      if (now - lastBackPressTimeRef.current < 2000) {
+        window.history.back();
+      } else {
+        lastBackPressTimeRef.current = now;
+        showToast('info', 'Press back again to exit', 'Press back again to exit Better Ride.');
+        window.history.pushState(null, '', window.location.href);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [actionModalOpen, flowScreen, currentTab, showToast]);
 
   // Real active students count on campus today
   const activeStudentsCount = useMemo(() => {
@@ -305,8 +373,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         onSignOut={onSignOut}
       />
 
-      {/* 2. Main Content Canvas - Scaled Down & Ergonomic */}
-      <main className="flex-1 w-full max-w-[420px] mx-auto px-3 py-2 pb-20">
+      {/* 2. Main Content Canvas - Centered & Ergonomically Spaced */}
+      <main className="flex-1 w-full max-w-[420px] mx-auto px-4 py-4 sm:py-5 pb-24 space-y-4 sm:space-y-5">
         {/* TAB 1: HOME */}
         {currentTab === 'home' && (
           <>

@@ -33,7 +33,7 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({
     <div className="space-y-3 animate-in fade-in duration-150">
       {/* Header - Compact */}
       <div className="space-y-0.2 pt-0.5">
-        <h1 className="text-lg sm:text-xl font-extrabold text-[#09090B] tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-extrabold text-[#09090B] tracking-tight">
           My Rides
         </h1>
         <p className="text-[10px] text-[#71717A] font-medium">

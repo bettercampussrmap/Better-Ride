@@ -82,7 +82,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   return (
-    <div className="space-y-3 animate-in fade-in duration-200">
+    <div className="space-y-5 animate-in fade-in duration-200">
       {/* 1. Where are you going? Card - Compact & Crisp */}
       <div className="bg-white rounded-2xl border border-[#E4E4E7] p-4 shadow-md space-y-3">
         {/* Card Header */}
@@ -197,7 +197,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       </div>
 
       {/* 3. Upcoming Rides Carousel - Compact */}
-      <div className="space-y-2">
+      <div className="space-y-2 pt-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <h3 className="text-xs font-bold text-[#09090B] tracking-wider uppercase">
