@@ -131,8 +131,17 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
 
           if (isMounted) {
             setMessages((prev) => {
-              // Deduplicate by message ID
-              if (prev.some((m) => m.id === messageWithProfile.id)) {
+              // Deduplicate by message ID OR by content + user + timestamp similarity
+              const isDuplicate = prev.some((m) => {
+                const sameId = m.id === messageWithProfile.id;
+                const sameMsg = 
+                  m.content === messageWithProfile.content &&
+                  m.user_id === messageWithProfile.user_id &&
+                  Math.abs(new Date(m.created_at).getTime() - new Date(messageWithProfile.created_at).getTime()) < 5000;
+                return sameId || sameMsg;
+              });
+
+              if (isDuplicate) {
                 return prev;
               }
               return [...prev, messageWithProfile];
@@ -171,33 +180,6 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
     }
 
     setSending(true);
-
-    if (!isSupabaseConfigured()) {
-      const localMsg: Message = {
-        id: `local-msg-${Date.now()}`,
-        slot_id: slot.id,
-        user_id: currentUserId,
-        content: trimmed,
-        created_at: new Date().toISOString(),
-        profile: {
-          id: currentUserId,
-          display_name: 'You (Student)',
-          email: 'bettercampus.srmap@gmail.com',
-          avatar_url: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      };
-
-      const updated = [...messages, localMsg];
-      setMessages(updated);
-      localStorage.setItem(`local_chat_${slot.id}`, JSON.stringify(updated));
-      setInputText('');
-      setSending(false);
-      setTimeout(scrollToBottom, 50);
-      textareaRef.current?.focus();
-      return;
-    }
 
     try {
       const saved = await postMessageToSlot(slot.id, currentUserId, trimmed);

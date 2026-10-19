@@ -93,33 +93,7 @@ function AppContent() {
     let isMounted = true;
 
     const initAuth = async () => {
-      // 1. Check for saved active Better Ride user
-      if (typeof window !== 'undefined') {
-        const rawActive = localStorage.getItem('better_ride_active_user');
-        if (rawActive && isMounted) {
-          try {
-            const parsed = JSON.parse(rawActive);
-            if (parsed && parsed.id) {
-              const validId = isValidUuid(parsed.id) ? parsed.id : toValidUuid(parsed.id);
-              const u = {
-                id: validId,
-                email: parsed.email,
-                name: parsed.display_name || parsed.name,
-                user_metadata: {
-                  full_name: parsed.display_name || parsed.name,
-                  name: parsed.display_name || parsed.name,
-                  avatar_url: parsed.avatar_url,
-                  gender: parsed.gender,
-                },
-              };
-              setUser(u);
-              setProfile(parsed);
-            }
-          } catch {}
-        }
-      }
-
-      // 2. Check Supabase session if configured
+      // 1. Check Supabase session if configured
       if (isSupabaseConfigured()) {
         const supabase = getSupabase();
         if (supabase) {

@@ -476,7 +476,6 @@ export const SHARED_SYSTEM_AUTH_USER = 'c52674ed-5f25-4340-8be9-4bf707126266';
  * Fetch messages for a slot directly from Supabase (with resilient parsing & fallback)
  */
 export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
-  let supabaseMsgs: Message[] = [];
   const supabase = getSupabase();
   if (supabase) {
     try {
@@ -487,8 +486,8 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        supabaseMsgs = data.map((d: any) => {
-          let author = 'Student';
+        return data.map((d: any) => {
+          let author = 'Campus Member';
           let authorId = d.user_id;
           let text = d.content;
 
@@ -525,40 +524,11 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
     }
   }
 
-  const allMsgs = loadLocalMessages();
-  const localMsgs = allMsgs[slotId] || [];
-
-  // Also check legacy local_chat_ storage key
-  let legacyMsgs: Message[] = [];
-  if (typeof window !== 'undefined') {
-    try {
-      const rawLegacy = localStorage.getItem(`local_chat_${slotId}`);
-      if (rawLegacy) {
-        const parsed = JSON.parse(rawLegacy);
-        if (Array.isArray(parsed)) legacyMsgs = parsed;
-      }
-    } catch {}
-  }
-
-  // Merge supabaseMsgs, localMsgs, and legacyMsgs by message id or content/timestamp
-  const msgMap = new Map<string, Message>();
-  legacyMsgs.forEach((m) => msgMap.set(m.id || `${m.created_at}-${m.content}`, m));
-  localMsgs.forEach((m) => msgMap.set(m.id || `${m.created_at}-${m.content}`, m));
-  supabaseMsgs.forEach((m) => msgMap.set(m.id || `${m.created_at}-${m.content}`, m));
-
-  const mergedMsgs = Array.from(msgMap.values()).sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
-
-  // Update local cache
-  allMsgs[slotId] = mergedMsgs;
-  saveLocalMessages(allMsgs);
-
-  return mergedMsgs;
+  return [];
 }
 
 /**
- * Post a message to a slot (hybrid local persistence + Supabase background sync)
+ * Post a message to a slot (Supabase only)
  */
 export async function postMessageToSlot(
   slotId: string,
@@ -569,45 +539,8 @@ export async function postMessageToSlot(
   const trimmed = content.trim();
   if (!trimmed) return null;
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
-  const senderName = userName || 'Student';
+  const senderName = userName || 'Campus Member';
 
-  const localMsg: Message = {
-    id: toValidUuid(`msg-${Date.now()}-${Math.floor(Math.random() * 10000)}`),
-    slot_id: slotId,
-    user_id: validUserId,
-    content: trimmed,
-    created_at: new Date().toISOString(),
-    profile: {
-      id: validUserId,
-      display_name: senderName,
-      email: null,
-      avatar_url: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  };
-
-  // 1. Save locally immediately to guarantee it persists and displays instantly
-  const allMsgs = loadLocalMessages();
-  if (!allMsgs[slotId]) {
-    allMsgs[slotId] = [];
-  }
-  allMsgs[slotId].push(localMsg);
-  saveLocalMessages(allMsgs);
-
-  if (typeof window !== 'undefined') {
-    try {
-      const legacyKey = `local_chat_${slotId}`;
-      const existingLegacy = localStorage.getItem(legacyKey);
-      let parsedLegacy: Message[] = existingLegacy ? JSON.parse(existingLegacy) : [];
-      if (!parsedLegacy.some((m) => m.id === localMsg.id)) {
-        parsedLegacy.push(localMsg);
-        localStorage.setItem(legacyKey, JSON.stringify(parsedLegacy));
-      }
-    } catch {}
-  }
-
-  // 2. Try posting to Supabase in background if valid UUID
   const supabase = getSupabase();
   if (supabase && isValidUuid(slotId)) {
     try {
@@ -616,15 +549,33 @@ export async function postMessageToSlot(
         authorId: validUserId,
         text: trimmed,
       });
-      await supabase.from('messages').insert({
+      const { data, error } = await supabase.from('messages').insert({
         slot_id: slotId,
         user_id: SHARED_SYSTEM_AUTH_USER,
         content: payload,
-      });
+      }).select('*').maybeSingle();
+
+      if (!error && data) {
+        return {
+          id: data.id,
+          slot_id: data.slot_id,
+          user_id: validUserId,
+          content: trimmed,
+          created_at: data.created_at,
+          profile: {
+            id: validUserId,
+            display_name: senderName,
+            email: null,
+            avatar_url: null,
+            created_at: data.created_at,
+            updated_at: data.created_at,
+          },
+        };
+      }
     } catch (e) {
-      // Supabase insert failed, but local message is already stored and returned!
+      console.warn('Supabase postMessageToSlot error:', e);
     }
   }
 
-  return localMsg;
+  return null;
 }

@@ -146,9 +146,12 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
           {ride.members && ride.members.length > 0 ? (
             ride.members.map((member) => {
               const isMe = member.user_id === currentUserId;
-              const memberName =
-                member.profile?.display_name ||
-                (isMe ? userName : 'Student');
+              const displayName = member.profile?.display_name;
+              const isDefaultName = displayName === 'Campus Member' || !displayName;
+              
+              const memberName = isDefaultName
+                ? (member.profile?.email?.split('@')[0] || (isMe ? userName : 'Student'))
+                : displayName;
               const memberAvatar = member.profile?.avatar_url;
 
               return (
