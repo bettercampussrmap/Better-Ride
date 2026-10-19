@@ -1,6 +1,5 @@
 import React from 'react';
 import { ArrowLeft, AlertTriangle, Clock, MessageSquare, ArrowRight, User, CheckCircle2 } from 'lucide-react';
-import { DESTINATION_FARES } from '../../lib/constants';
 import { SlotWithDetails } from '../../types/database';
 import { isRideCompleted } from '../../lib/date-utils';
 import { useToast } from '../ui/Toast';
@@ -23,7 +22,6 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
   onBack,
 }) => {
   const { showToast } = useToast();
-  const fare = DESTINATION_FARES[ride.destination] || DESTINATION_FARES.default;
   const memberCount = ride.memberCount || (ride.members?.length ?? 1);
   const targetSeats = ride.target_size || 4;
   const seatsOpen = Math.max(0, targetSeats - memberCount);
@@ -71,25 +69,14 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
 
       {/* Main Details Card - Compact */}
       <div className="bg-white rounded-xl border border-[#E4E4E7] p-3.5 shadow-2xs space-y-3">
-        {/* Destination & Estimated Fare Row */}
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <span className="text-[9px] font-bold text-[#71717A] uppercase tracking-wider">
-              DESTINATION
-            </span>
-            <h3 className="text-base sm:text-lg font-extrabold text-[#09090B] tracking-tight">
-              {ride.destination}
-            </h3>
-          </div>
-
-          <div className="text-right">
-            <span className="text-[9px] font-bold text-[#71717A] uppercase tracking-wider">
-              ESTIMATED FARE
-            </span>
-            <p className="text-xs font-extrabold text-[#09090B] tracking-tight">
-              {fare}
-            </p>
-          </div>
+        {/* Destination Row */}
+        <div>
+          <span className="text-[9px] font-bold text-[#71717A] uppercase tracking-wider">
+            DESTINATION
+          </span>
+          <h3 className="text-base sm:text-lg font-extrabold text-[#09090B] tracking-tight">
+            {ride.destination}
+          </h3>
         </div>
 
         {/* Journey Timeline Panel - Compact */}

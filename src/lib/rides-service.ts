@@ -150,7 +150,7 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
                 ? realName
                 : isCurrentUser
                 ? 'You'
-                : 'Campus Member';
+                : 'Student';
 
               const prof: Profile = {
                 id: m.user_id,
@@ -475,10 +475,12 @@ export function subscribeToRideUpdates(onUpdate: () => void): () => void {
 export const SHARED_SYSTEM_AUTH_USER = 'c52674ed-5f25-4340-8be9-4bf707126266';
 
 /**
- * Fetch messages for a slot directly from Supabase (with resilient parsing & fallback)
+ * Fetch messages for a slot from Supabase and local persistent cache
  */
 export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
   const supabase = getSupabase();
+  let supabaseMessages: Message[] = [];
+
   if (supabase) {
     try {
       const profileMap = new Map<string, any>();
@@ -511,7 +513,7 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         .order('created_at', { ascending: true });
 
       if (!error && data) {
-        return data.map((d: any) => {
+        supabaseMessages = data.map((d: any) => {
           const matchedProf = profileMap.get(d.user_id);
           const matchedById = usersById[d.user_id];
           const matchedLocal = Object.values(localUsers).find(
@@ -554,11 +556,24 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
     }
   }
 
-  return [];
+  // Load local persistent messages cache
+  const localMsgsMap = loadLocalMessages();
+  const localSlotMsgs = localMsgsMap[slotId] || [];
+
+  // Merge and deduplicate
+  const msgMap = new Map<string, Message>();
+  localSlotMsgs.forEach((m) => msgMap.set(m.id || `${m.user_id}-${m.created_at}`, m));
+  supabaseMessages.forEach((m) => msgMap.set(m.id || `${m.user_id}-${m.created_at}`, m));
+
+  const merged = Array.from(msgMap.values()).sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  return merged;
 }
 
 /**
- * Post a message to a slot (Supabase only)
+ * Post a message to a slot (saves to Supabase and local cache)
  */
 export async function postMessageToSlot(
   slotId: string,
@@ -571,6 +586,28 @@ export async function postMessageToSlot(
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
   const senderName = userName || 'Student';
 
+  const newMsg: Message = {
+    id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    slot_id: slotId,
+    user_id: validUserId,
+    content: trimmed,
+    created_at: new Date().toISOString(),
+    profile: {
+      id: validUserId,
+      display_name: senderName,
+      email: null,
+      avatar_url: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  };
+
+  // Always save to local cache immediately so it never disappears
+  const localMsgs = loadLocalMessages();
+  if (!localMsgs[slotId]) localMsgs[slotId] = [];
+  localMsgs[slotId].push(newMsg);
+  saveLocalMessages(localMsgs);
+
   const supabase = getSupabase();
   if (supabase && isValidUuid(slotId)) {
     try {
@@ -581,21 +618,9 @@ export async function postMessageToSlot(
       }).select('*').maybeSingle();
 
       if (!error && data) {
-        return {
-          id: data.id,
-          slot_id: data.slot_id,
-          user_id: data.user_id,
-          content: data.content,
-          created_at: data.created_at,
-          profile: {
-            id: data.user_id,
-            display_name: senderName,
-            email: null,
-            avatar_url: null,
-            created_at: data.created_at,
-            updated_at: data.created_at,
-          },
-        };
+        newMsg.id = data.id;
+        newMsg.created_at = data.created_at;
+        return newMsg;
       } else if (error) {
         console.warn('Supabase postMessageToSlot error:', error);
       }
@@ -604,5 +629,5 @@ export async function postMessageToSlot(
     }
   }
 
-  return null;
+  return newMsg;
 }
