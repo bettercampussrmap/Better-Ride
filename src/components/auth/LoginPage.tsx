@@ -415,9 +415,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <h1 className="text-lg sm:text-xl font-extrabold text-[#09090B] tracking-tight">
               Better Ride
             </h1>
-            <p className="text-[10px] text-[#71717A] font-medium">
-              SRM University-AP Campus Ride Pooling
-            </p>
           </div>
 
           {/* Form Header */}
@@ -431,15 +428,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 ? 'Reset your password'
                 : 'Set new password'}
             </h2>
-            <p className="text-[10px] text-[#71717A]">
-              {mode === 'login'
-                ? 'Enter your credentials to continue'
-                : mode === 'signup'
-                ? 'Fill in your details to register in database'
-                : forgotStep === 'verify'
-                ? 'Enter your registered name and email to verify'
-                : `Verified for ${verifiedProfile?.email}`}
-            </p>
+            {mode !== 'login' && (
+              <p className="text-[10px] text-[#71717A]">
+                {mode === 'signup'
+                  ? 'Fill in your details to register in database'
+                  : forgotStep === 'verify'
+                  ? 'Enter your registered name and email to verify'
+                  : `Verified for ${verifiedProfile?.email}`}
+              </p>
+            )}
           </div>
 
           {/* 1. LOGIN FORM */}

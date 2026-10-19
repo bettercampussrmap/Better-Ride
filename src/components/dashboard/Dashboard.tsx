@@ -182,16 +182,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
   }, [actionModalOpen, flowScreen, currentTab, showToast]);
 
-  // Real active students count on campus today
-  const activeStudentsCount = useMemo(() => {
-    const today = getTodayISTDateString();
-    const todaySlots = rides.filter((r) => r.departure_date === today);
-    const userIds = new Set<string>();
-    todaySlots.forEach((slot) => {
-      slot.members.forEach((m) => userIds.add(m.user_id));
-    });
-    return userIds.size;
-  }, [rides]);
+
 
   // User's joined upcoming vs past rides (marked complete when slot end time is reached)
   const myUpcomingRides = useMemo(() => {
@@ -386,7 +377,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onFindRide={handleStartFindRide}
                 onJoinRide={handleDirectJoinGroup}
                 upcomingRides={myUpcomingRides}
-                activeStudentsCount={activeStudentsCount}
                 onOpenRideDetails={handleOpenRideDetails}
                 onOpenRideChat={handleOpenRideChat}
               />

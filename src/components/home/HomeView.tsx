@@ -11,7 +11,6 @@ interface HomeViewProps {
   onCreateGroup?: () => void;
   onJoinRide?: (slot: SlotWithDetails) => void;
   upcomingRides: SlotWithDetails[];
-  activeStudentsCount: number;
   onOpenRideDetails: (slot: SlotWithDetails) => void;
   onOpenRideChat: (slot: SlotWithDetails) => void;
 }
@@ -24,7 +23,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onCreateGroup,
   onJoinRide,
   upcomingRides,
-  activeStudentsCount,
   onOpenRideDetails,
   onOpenRideChat,
 }) => {
@@ -319,17 +317,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
         )}
       </div>
 
-      {/* 4. Active Students on Campus Card - Compact */}
-      <div className="bg-white rounded-xl border border-[#E4E4E7] px-3 py-2 text-center shadow-2xs">
-        <p className="text-[11px] font-semibold text-[#09090B] flex items-center justify-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E]" />
-          <span>
-            {activeStudentsCount > 0
-              ? `${activeStudentsCount} student${activeStudentsCount > 1 ? 's' : ''} active on campus today`
-              : 'Active campus departure network for SRM AP students'}
-          </span>
-        </p>
-      </div>
     </div>
   );
 };

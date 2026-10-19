@@ -36,9 +36,6 @@ export const MyRidesView: React.FC<MyRidesViewProps> = ({
         <h1 className="text-xl sm:text-2xl font-extrabold text-[#09090B] tracking-tight">
           My Rides
         </h1>
-        <p className="text-[10px] text-[#71717A] font-medium">
-          Your pooled SRM AP autos and cabs
-        </p>
       </div>
 
       {/* Segmented Control */}

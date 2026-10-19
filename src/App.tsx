@@ -93,6 +93,16 @@ function AppContent() {
     let isMounted = true;
 
     const initAuth = async () => {
+      // Clear all stored data, slots, messages, saved logins
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('better_ride_active_user');
+        localStorage.removeItem('better_ride_mock_slots');
+        localStorage.removeItem('better_ride_mock_messages');
+        localStorage.removeItem('better_ride_database_users');
+        localStorage.removeItem('better_ride_users_by_id');
+        localStorage.removeItem('better_ride_google_user');
+      }
+
       // 1. Check Supabase session if configured
       if (isSupabaseConfigured()) {
         const supabase = getSupabase();
@@ -216,6 +226,11 @@ function AppContent() {
   const handleSignOut = async () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('better_ride_active_user');
+      localStorage.removeItem('better_ride_mock_slots');
+      localStorage.removeItem('better_ride_mock_messages');
+      localStorage.removeItem('better_ride_database_users');
+      localStorage.removeItem('better_ride_users_by_id');
+      localStorage.removeItem('better_ride_google_user');
     }
     clearGoogleUser();
     try {

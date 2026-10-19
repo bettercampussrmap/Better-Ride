@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, AlertTriangle, ShieldCheck, Clock, MessageSquare, ArrowRight, User, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Clock, MessageSquare, ArrowRight, User, CheckCircle2 } from 'lucide-react';
 import { DESTINATION_FARES } from '../../lib/constants';
 import { SlotWithDetails } from '../../types/database';
 import { isRideCompleted } from '../../lib/date-utils';
@@ -134,10 +134,6 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold text-[#71717A] uppercase tracking-wider">
             TRAVEL COMPANIONS ({memberCount}/{targetSeats})
-          </span>
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-[#F4F4F5] text-[10px] font-bold text-[#09090B] border border-[#E4E4E7]">
-            <ShieldCheck className="w-2.5 h-2.5 text-[#22C55E]" />
-            <span>Verified</span>
           </span>
         </div>
 
