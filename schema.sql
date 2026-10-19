@@ -54,15 +54,19 @@ EXCEPTION WHEN OTHERS THEN
     NULL;
 END $$;
 
--- 1. PROFILES TABLE (supports both Google sub IDs & Supabase UUIDs)
+-- 1. PROFILES TABLE (supports direct email & password authentication)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id TEXT PRIMARY KEY,
     display_name TEXT,
-    email TEXT,
+    email TEXT UNIQUE,
+    gender TEXT,
+    password TEXT,
     avatar_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS gender TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS password TEXT;
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 
 -- 2. TIME SLOTS TABLE

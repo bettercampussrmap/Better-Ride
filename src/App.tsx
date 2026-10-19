@@ -93,25 +93,30 @@ function AppContent() {
     let isMounted = true;
 
     const initAuth = async () => {
-      // 1. Check for saved Google Identity user
-      const savedGoogleUser = getSavedGoogleUser();
-      if (savedGoogleUser && isMounted) {
-        const validId = isValidUuid(savedGoogleUser.id)
-          ? savedGoogleUser.id
-          : toValidUuid(savedGoogleUser.id);
-        const u = {
-          id: validId,
-          email: savedGoogleUser.email,
-          name: savedGoogleUser.name,
-          picture: savedGoogleUser.picture,
-          user_metadata: {
-            full_name: savedGoogleUser.name,
-            name: savedGoogleUser.name,
-            avatar_url: savedGoogleUser.picture,
-          },
-        };
-        setUser(u);
-        syncUserProfile(u);
+      // 1. Check for saved active Better Ride user
+      if (typeof window !== 'undefined') {
+        const rawActive = localStorage.getItem('better_ride_active_user');
+        if (rawActive && isMounted) {
+          try {
+            const parsed = JSON.parse(rawActive);
+            if (parsed && parsed.id) {
+              const validId = isValidUuid(parsed.id) ? parsed.id : toValidUuid(parsed.id);
+              const u = {
+                id: validId,
+                email: parsed.email,
+                name: parsed.display_name || parsed.name,
+                user_metadata: {
+                  full_name: parsed.display_name || parsed.name,
+                  name: parsed.display_name || parsed.name,
+                  avatar_url: parsed.avatar_url,
+                  gender: parsed.gender,
+                },
+              };
+              setUser(u);
+              setProfile(parsed);
+            }
+          } catch {}
+        }
       }
 
       // 2. Check Supabase session if configured
@@ -214,24 +219,30 @@ function AppContent() {
     };
   }, [syncUserProfile, showToast]);
 
-  const handleGoogleSuccess = async (googleUser: GoogleUserProfile) => {
-    const validId = isValidUuid(googleUser.id) ? googleUser.id : toValidUuid(googleUser.id);
+  const handleLoginSuccess = useCallback((userProfile: Profile) => {
+    const validId = isValidUuid(userProfile.id) ? userProfile.id : toValidUuid(userProfile.id);
     const u = {
       id: validId,
-      email: googleUser.email,
-      name: googleUser.name,
-      picture: googleUser.picture,
+      email: userProfile.email,
+      name: userProfile.display_name,
       user_metadata: {
-        full_name: googleUser.name,
-        name: googleUser.name,
-        avatar_url: googleUser.picture,
+        full_name: userProfile.display_name,
+        name: userProfile.display_name,
+        avatar_url: userProfile.avatar_url,
+        gender: userProfile.gender,
       },
     };
     setUser(u);
-    await syncUserProfile(u);
-  };
+    setProfile(userProfile);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('better_ride_active_user', JSON.stringify(userProfile));
+    }
+  }, []);
 
   const handleSignOut = async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('better_ride_active_user');
+    }
     clearGoogleUser();
     try {
       await supabaseSignOut();
@@ -266,7 +277,7 @@ function AppContent() {
   return (
     <>
       {!user ? (
-        <LoginPage onGoogleSuccess={handleGoogleSuccess} />
+        <LoginPage onLoginSuccess={handleLoginSuccess} />
       ) : (
         <Dashboard user={user} profile={profile} onSignOut={handleSignOut} />
       )}

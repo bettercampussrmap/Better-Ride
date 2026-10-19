@@ -36,19 +36,23 @@ export function normalizeSupabaseUrl(rawUrl: string): string {
   }
 }
 
+export const DEFAULT_SUPABASE_URL = 'https://supabase.com/dashboard/project/wcsqvmmiivxtgnoikwwm';
+export const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indjc3F2bW1paXZ4dGdub2lrd3dtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIzNDA2ODYsImV4cCI6MjEwNzkxNjY4Nn0.uqgO0Xrrf7VivIekp8POxySu_A5GpaNSIsuCD1dytrQ';
+
 export function getSupabaseEnvConfig(): { url: string; key: string } {
   let rawUrl =
     (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_SUPABASE_URL) : null) ||
     (import.meta.env.VITE_SUPABASE_URL as string | undefined) ||
     (import.meta.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined) ||
-    '';
+    DEFAULT_SUPABASE_URL;
 
   const key =
     (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_SUPABASE_KEY) : null) ||
     (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ||
     (import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined) ||
     (import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
-    '';
+    DEFAULT_SUPABASE_ANON_KEY;
 
   const url = normalizeSupabaseUrl(rawUrl);
 

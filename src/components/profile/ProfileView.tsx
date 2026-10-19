@@ -93,12 +93,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         <div className="space-y-0.5 min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <h3 className="text-sm font-bold text-[#09090B] truncate">{displayName}</h3>
             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-[#F4F4F5] text-[9px] font-bold text-[#09090B]">
               <ShieldCheck className="w-2.5 h-2.5 text-[#22C55E]" />
               <span>Verified</span>
             </span>
+            {profile?.gender && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-50 text-blue-700 font-semibold">
+                {profile.gender}
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-[#71717A] truncate font-medium">
             {email || 'SRM University-AP'}
