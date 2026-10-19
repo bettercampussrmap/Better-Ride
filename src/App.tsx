@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getSupabase, isSupabaseConfigured, signOut as supabaseSignOut, ensureAuthenticatedSession } from './lib/supabase';
-import {
-  getSavedGoogleUser,
-  clearGoogleUser,
-  GoogleUserProfile,
-} from './lib/google-auth';
+import { getSupabase, isSupabaseConfigured, signOut as supabaseSignOut } from './lib/supabase';
+import { getSavedGoogleUser, clearGoogleUser, GoogleUserProfile } from './lib/google-auth';
 import { toValidUuid, isValidUuid } from './lib/uuid-utils';
 import { Profile } from './types/database';
 import { ToastProvider, useToast } from './components/ui/Toast';
@@ -100,7 +96,9 @@ function AppContent() {
       // 1. Check for saved Google Identity user
       const savedGoogleUser = getSavedGoogleUser();
       if (savedGoogleUser && isMounted) {
-        const validId = isValidUuid(savedGoogleUser.id) ? savedGoogleUser.id : toValidUuid(savedGoogleUser.id);
+        const validId = isValidUuid(savedGoogleUser.id)
+          ? savedGoogleUser.id
+          : toValidUuid(savedGoogleUser.id);
         const u = {
           id: validId,
           email: savedGoogleUser.email,
@@ -108,6 +106,7 @@ function AppContent() {
           picture: savedGoogleUser.picture,
           user_metadata: {
             full_name: savedGoogleUser.name,
+            name: savedGoogleUser.name,
             avatar_url: savedGoogleUser.picture,
           },
         };
@@ -120,7 +119,9 @@ function AppContent() {
         const supabase = getSupabase();
         if (supabase) {
           try {
-            const { data: { session: initialSession } } = await supabase.auth.getSession();
+            const {
+              data: { session: initialSession },
+            } = await supabase.auth.getSession();
             if (initialSession?.user && isMounted) {
               setSession(initialSession);
               setUser(initialSession.user);
@@ -133,20 +134,22 @@ function AppContent() {
       }
 
       if (isMounted) setLoading(false);
+
+      // Clean hash fragment from URL if redirected
+      if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
     };
 
     initAuth();
-
-    // Clean hash fragment from URL if redirected from OAuth callback
-    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
-      window.history.replaceState(null, '', window.location.pathname);
-    }
 
     // Subscribe to Supabase auth changes if configured
     if (isSupabaseConfigured()) {
       const supabase = getSupabase();
       if (supabase) {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange(async (event, newSession) => {
           if (!isMounted) return;
 
           setSession(newSession);
@@ -154,7 +157,11 @@ function AppContent() {
             setUser(newSession.user);
             await syncUserProfile(newSession.user);
             if (event === 'SIGNED_IN') {
-              showToast('success', 'Signed In', `Welcome, ${newSession.user.user_metadata?.full_name || 'traveler'}!`);
+              showToast(
+                'success',
+                'Signed In',
+                `Welcome, ${newSession.user.user_metadata?.full_name || 'Student'}!`
+              );
             }
           } else if (event === 'SIGNED_OUT') {
             setUser(null);
@@ -168,39 +175,27 @@ function AppContent() {
         };
       }
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [syncUserProfile, showToast]);
 
   const handleGoogleSuccess = async (googleUser: GoogleUserProfile) => {
-    let finalId = googleUser.id;
-
-    if (isSupabaseConfigured()) {
-      const supabaseUid = await ensureAuthenticatedSession({
-        name: googleUser.name,
-        email: googleUser.email,
-        avatarUrl: googleUser.picture,
-      });
-      if (supabaseUid) {
-        finalId = supabaseUid;
-      }
-    }
-
-    if (!isValidUuid(finalId)) {
-      finalId = toValidUuid(finalId);
-    }
-
-    const formattedUser = {
-      id: finalId,
+    const validId = isValidUuid(googleUser.id) ? googleUser.id : toValidUuid(googleUser.id);
+    const u = {
+      id: validId,
       email: googleUser.email,
       name: googleUser.name,
       picture: googleUser.picture,
       user_metadata: {
         full_name: googleUser.name,
+        name: googleUser.name,
         avatar_url: googleUser.picture,
       },
     };
-    setUser(formattedUser);
-    syncUserProfile(formattedUser);
-    showToast('success', 'Signed In', `Welcome, ${googleUser.name}!`);
+    setUser(u);
+    await syncUserProfile(u);
   };
 
   const handleSignOut = async () => {
@@ -211,24 +206,18 @@ function AppContent() {
     setSession(null);
     setUser(null);
     setProfile(null);
+    showToast('info', 'Signed Out', 'You have been signed out.');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F1F7F0] text-[#183F2A]">
-        <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-[#245C3A]/20 bg-white p-1 shadow-md mb-4 animate-pulse">
-          <img
-            src="/better-campus-logo.png"
-            alt="Loading Travel Buddy Finder"
-            className="w-full h-full object-contain rounded-full"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/better-campus-logo.jpg';
-            }}
-          />
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAFAF8] text-[#09090B]">
+        <div className="w-12 h-12 rounded-xl bg-[#09090B] text-white flex items-center justify-center font-black text-xl shadow-sm mb-3">
+          B
         </div>
-        <div className="w-6 h-6 border-2 border-[#245C3A] border-t-transparent rounded-full animate-spin mb-2" />
-        <p className="text-xs font-bold text-[#245C3A] tracking-wider uppercase">
-          Loading Travel Buddy Finder...
+        <div className="w-5 h-5 border-2 border-[#09090B] border-t-transparent rounded-full animate-spin mb-2" />
+        <p className="text-[11px] font-bold text-[#71717A] tracking-wider uppercase">
+          Loading Better Ride...
         </p>
       </div>
     );
@@ -239,11 +228,7 @@ function AppContent() {
       {!user ? (
         <LoginPage onGoogleSuccess={handleGoogleSuccess} />
       ) : (
-        <Dashboard
-          user={user}
-          profile={profile}
-          onSignOut={handleSignOut}
-        />
+        <Dashboard user={user} profile={profile} onSignOut={handleSignOut} />
       )}
     </>
   );

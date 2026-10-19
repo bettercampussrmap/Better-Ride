@@ -92,7 +92,57 @@ export const CAMPUS_DESTINATIONS: DestinationLocation[] = [
   },
 ];
 
-export const DEFAULT_DESTINATION = CAMPUS_DESTINATIONS[0].name;
+export interface CampusPickupPoint {
+  id: string;
+  name: string;
+  shortName: string;
+  description: string;
+}
+
+export const CAMPUS_PICKUP_POINTS: CampusPickupPoint[] = [
+  {
+    id: 'srm-gate-3',
+    name: 'SRM AP Gate 3',
+    shortName: 'Gate 3',
+    description: 'Designated student pickup area',
+  },
+  {
+    id: 'vit-ap',
+    name: 'VIT AP',
+    shortName: 'VIT AP',
+    description: 'Designated student pickup area',
+  },
+  {
+    id: 'amrita-uni',
+    name: 'Amrita Uni',
+    shortName: 'Amrita Uni',
+    description: 'Designated student pickup area',
+  },
+];
+
+export const POPULAR_STUDENT_SPOTS = [
+  'Mangalagiri',
+  'Vijayawada',
+  'Tadepalli',
+  'Guntur',
+  'Amaravati',
+];
+
+export const DESTINATION_FARES: Record<string, string> = {
+  Mangalagiri: '~₹30 – ₹40 / head',
+  Vijayawada: '~₹70 – ₹90 / head',
+  Tadepalli: '~₹45 – ₹60 / head',
+  Guntur: '~₹80 – ₹110 / head',
+  Amaravati: '~₹35 – ₹50 / head',
+  default: '~₹40 – ₹60 / head',
+};
+
+export const DEFAULT_DESTINATION = 'Mangalagiri';
+export const DEFAULT_PICKUP_POINT = 'SRM AP Gate 3';
+
+export const MAX_GROUP_MEMBERS = 12;
+export const DEFAULT_GROUP_SIZE = 12;
+export const ALLOWED_GROUP_SIZES = [4, 6, 8, 12] as const;
 
 export interface IntervalDefinition {
   startTime: string; // HH:MM:00

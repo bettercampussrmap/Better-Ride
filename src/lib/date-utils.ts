@@ -63,6 +63,25 @@ export function formatDateForDisplay(dateString: string): string {
 }
 
 /**
+ * Format a YYYY-MM-DD to "Mon, Oct 19" style for pills
+ */
+export function formatDateShortPill(dateString: string): string {
+  if (!dateString) return '';
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    timeZone: CAMPUS_TIMEZONE,
+  }).format(date);
+  const monthDay = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: CAMPUS_TIMEZONE,
+  }).format(date);
+  return `${weekday}, ${monthDay}`;
+}
+
+/**
  * Convert HH:MM or HH:MM:SS to 12-hour format "7:15 AM"
  */
 export function formatTime12(timeString: string): string {

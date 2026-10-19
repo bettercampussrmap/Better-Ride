@@ -15,6 +15,7 @@ export interface TimeSlot {
   end_time: string;       // HH:MM:SS
   target_size?: number;   // 3 or 4 students
   ride_type?: string;     // 'auto' | 'cab'
+  pickup_point?: string;  // e.g. 'SRM AP Gate 3'
   created_at: string;
 }
 
@@ -26,6 +27,7 @@ export interface SlotMember {
   ride_pref?: string;     // 'auto' | 'cab' | 'any'
   target_size?: number;   // 3, 4, 6
   pickup_note?: string;   // e.g. "Main gate security cabin"
+  pickup_point?: string;
   profile?: Profile;
 }
 
