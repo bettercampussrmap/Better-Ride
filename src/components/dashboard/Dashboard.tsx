@@ -23,6 +23,7 @@ import {
   fetchAllRides,
   createAndJoinRide,
   leaveRideInSupabase,
+  subscribeToRideUpdates,
 } from '../../lib/rides-service';
 
 interface DashboardProps {
@@ -94,6 +95,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     loadRides();
+
+    // Subscribe to Postgres Realtime changes from Supabase
+    const unsubscribe = subscribeToRideUpdates(() => {
+      loadRides();
+    });
+
+    // Periodic background sync every 5 seconds so waiting lists sync across all devices
+    const interval = setInterval(() => {
+      loadRides();
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, [loadRides]);
 
   // Real active students count on campus today
@@ -192,11 +208,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         departureDate: options.departureDate,
         startTime: options.startTime,
         endTime: options.endTime,
-        pickupPoint: options.pickupPoint,
         userId: currentUserId,
-        targetSize: options.targetSize, // capped at 12
+        targetSize: options.targetSize,
         ridePref: options.ridePref,
-        pickupNote: options.pickupNote,
         slotId: options.slotId,
         userName,
         userAvatar: profile?.avatar_url || user?.picture,

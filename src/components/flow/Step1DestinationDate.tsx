@@ -9,8 +9,8 @@ interface Step1DestinationDateProps {
   onDestinationChange: (dest: string) => void;
   selectedDate: string;
   onDateChange: (date: string) => void;
-  selectedPickup: string;
-  onPickupChange: (pickup: string) => void;
+  selectedPickup?: string;
+  onPickupChange?: (pickup: string) => void;
   onBack: () => void;
   onProceed: () => void;
 }
@@ -194,62 +194,8 @@ export const Step1DestinationDate: React.FC<Step1DestinationDateProps> = ({
         )}
       </div>
 
-      {/* Campus Pickup Point Section */}
-      <div className="space-y-1.5 pt-0.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] font-bold text-[#71717A] uppercase tracking-wider">
-            CAMPUS PICKUP POINT
-          </span>
-          <span className="text-[11px] font-semibold text-[#09090B]">{selectedPickup}</span>
-        </div>
-
-        <div className="space-y-1.5">
-          {CAMPUS_PICKUP_POINTS.map((point) => {
-            const isSelected = selectedPickup === point.name;
-            return (
-              <button
-                key={point.id}
-                type="button"
-                onClick={() => onPickupChange(point.name)}
-                className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer ${
-                  isSelected
-                    ? 'bg-[#09090B] text-white border-[#09090B] shadow-xs'
-                    : 'bg-white text-[#09090B] border-[#E4E4E7] hover:border-[#09090B]/30'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
-                      isSelected ? 'bg-white/15 text-white' : 'bg-[#F4F4F5] text-[#71717A]'
-                    }`}
-                  >
-                    <MapPin className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold tracking-tight">{point.name}</h4>
-                    <p
-                      className={`text-[10px] font-medium ${
-                        isSelected ? 'text-white/70' : 'text-[#71717A]'
-                      }`}
-                    >
-                      {point.description}
-                    </p>
-                  </div>
-                </div>
-
-                {isSelected && (
-                  <div className="w-4 h-4 rounded-full bg-white text-[#09090B] flex items-center justify-center">
-                    <Check className="w-2.5 h-2.5 stroke-[3]" />
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Choose Time Slot Button - Compact h-9.5 */}
-      <div className="pt-1">
+      <div className="pt-2">
         <button
           type="button"
           onClick={onProceed}

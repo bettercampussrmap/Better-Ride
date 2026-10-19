@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getSupabase } from '../../lib/supabase';
-import { toValidUuid } from '../../lib/uuid-utils';
+import { toValidUuid, isValidUuid } from '../../lib/uuid-utils';
 import { Profile } from '../../types/database';
 import { useToast } from '../ui/Toast';
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight } from 'lucide-react';
@@ -102,6 +102,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         return;
       }
 
+      // Ensure valid deterministic UUID
+      matchedProfile.id = isValidUuid(matchedProfile.id)
+        ? matchedProfile.id
+        : toValidUuid(`srm-student-${cleanEmail}`);
+
       // Save session
       if (typeof window !== 'undefined') {
         localStorage.setItem(STORAGE_KEY_ACTIVE_USER, JSON.stringify(matchedProfile));
@@ -176,7 +181,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         return;
       }
 
-      const safeId = toValidUuid(`user-${cleanEmail}-${Date.now()}`);
+      const safeId = toValidUuid(`srm-student-${cleanEmail}`);
       const avatarUrl = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
         cleanName
       )}&backgroundColor=1A73E8`;

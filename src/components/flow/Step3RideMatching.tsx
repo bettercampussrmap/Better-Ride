@@ -7,7 +7,7 @@ import { SlotWithDetails } from '../../types/database';
 interface Step3RideMatchingProps {
   destination: string;
   selectedDate: string;
-  selectedPickup: string;
+  selectedPickup?: string;
   selectedTimeInterval: IntervalDefinition;
   bestMatchRide: SlotWithDetails | null;
   otherGroups: SlotWithDetails[];
@@ -71,7 +71,6 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
         <div className="flex items-center justify-between text-[11px] text-[#71717A] font-medium">
           <div>
             <p>{destination} · {selectedTimeInterval.label}</p>
-            <p>Pickup: {selectedPickup}</p>
           </div>
           <button
             type="button"

@@ -333,22 +333,11 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
             </div>
           </div>
 
-          {/* Pickup Point & Landmark */}
+          {/* Optional Luggage / Ride Note */}
           <div className="space-y-1.5">
             <label className="block text-[11px] font-bold text-[#09090B]">
-              Pickup Point on Campus
+              Luggage / Ride Note (Optional)
             </label>
-            <select
-              value={pickupPoint}
-              onChange={(e) => setPickupPoint(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[#F4F4F5] border border-transparent focus:border-[#09090B] focus:bg-white text-xs font-semibold text-[#09090B] outline-none"
-            >
-              {CAMPUS_PICKUP_POINTS.map((p) => (
-                <option key={p.id} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
 
             {/* Quick landmark chips */}
             <div className="flex flex-wrap gap-1 pt-0.5">

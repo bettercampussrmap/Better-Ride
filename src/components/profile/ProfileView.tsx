@@ -45,8 +45,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     },
     {
       id: 'campus',
-      title: 'Campus & Default Pickup',
-      subtitle: preferredCampus,
+      title: 'Campus',
+      subtitle: 'SRM University-AP',
       icon: MapPin,
     },
     {
