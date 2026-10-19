@@ -21,8 +21,10 @@ export interface GoogleUserProfile {
 export function getGoogleClientId(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem(STORAGE_KEY_GOOGLE_CLIENT_ID);
-    if (custom) return custom.trim();
+    if (custom && custom.trim()) return custom.trim();
   }
+  const envId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)?.trim();
+  if (envId) return envId;
   return DEFAULT_GOOGLE_CLIENT_ID;
 }
 

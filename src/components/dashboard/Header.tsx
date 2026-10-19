@@ -60,25 +60,25 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden border-2 border-[#245C3A]/20 bg-white p-0.5 shadow-xs shrink-0">
             <img
-              src="/better-campus-logo.png"
-              alt="Better Campus Community"
-              className="w-full h-full object-contain rounded-full"
+              src="/better-ride-logo.png"
+              alt="Better Ride"
+              className="w-full h-full object-cover rounded-full"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = '/better-campus-logo.jpg';
+                (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
               }}
             />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-base sm:text-lg text-[#183F2A] tracking-tight">
-                Travel Buddy Finder
+                Better Ride
               </span>
               <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 bg-[#F1F7F0] text-[#245C3A] rounded-full border border-[#245C3A]/15">
                 <MapPin className="w-3 h-3 text-[#245C3A]" /> SRM-AP Campus Gate
               </span>
             </div>
             <p className="text-[11px] text-[#737B73] font-medium hidden sm:block">
-              Better Campus Community
+              SRM University-AP Campus Ride Pooling
             </p>
           </div>
         </div>

@@ -68,19 +68,23 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="max-w-[420px] mx-auto flex items-center justify-between gap-2.5">
         {/* Brand section */}
         <div className="flex items-center gap-2">
-          {/* Black rounded-square logo with white B */}
-          <div className="w-7 h-7 rounded-lg bg-[#09090B] text-white flex items-center justify-center font-black text-xs tracking-tighter shrink-0 shadow-2xs">
-            B
+          {/* Better Ride uploaded emblem logo */}
+          <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E4E4E7] bg-white shrink-0 shadow-2xs">
+            <img
+              src="/better-ride-logo.png"
+              alt="Better Ride Logo"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
+              }}
+            />
           </div>
 
           <div className="flex flex-col justify-center">
-            {/* Brand title + RIDE pill */}
+            {/* Brand title */}
             <div className="flex items-center gap-1 leading-none">
               <span className="font-extrabold text-sm tracking-tight text-[#09090B]">
-                BetterCampus
-              </span>
-              <span className="bg-[#09090B] text-white text-[8px] font-black tracking-wider px-1 py-0.5 rounded leading-none uppercase">
-                RIDE
+                Better Ride
               </span>
             </div>
 

@@ -71,7 +71,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           Profile
         </h1>
         <p className="text-[11px] text-[#71717A] font-medium">
-          BetterCampus student membership
+          Better Ride student membership
         </p>
       </div>
 

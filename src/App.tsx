@@ -135,6 +135,16 @@ function AppContent() {
 
       if (isMounted) setLoading(false);
 
+      // If running inside OAuth popup window callback:
+      if (typeof window !== 'undefined' && window.opener && (window.location.hash.includes('access_token') || window.location.search.includes('code='))) {
+        try {
+          window.opener.postMessage({ type: 'SUPABASE_OAUTH_SUCCESS' }, '*');
+          setTimeout(() => {
+            window.close();
+          }, 300);
+        } catch {}
+      }
+
       // Clean hash fragment from URL if redirected
       if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
         window.history.replaceState(null, '', window.location.pathname);
@@ -142,6 +152,29 @@ function AppContent() {
     };
 
     initAuth();
+
+    // Listen for OAuth success messages from popup
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type === 'SUPABASE_OAUTH_SUCCESS') {
+        const supabase = getSupabase();
+        if (supabase) {
+          try {
+            const { data: { session: newSession } } = await supabase.auth.getSession();
+            if (newSession?.user && isMounted) {
+              setSession(newSession);
+              setUser(newSession.user);
+              await syncUserProfile(newSession.user);
+              showToast(
+                'success',
+                'Signed In',
+                `Welcome, ${newSession.user.user_metadata?.full_name || 'Student'}!`
+              );
+            }
+          } catch {}
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
 
     // Subscribe to Supabase auth changes if configured
     if (isSupabaseConfigured()) {
@@ -212,8 +245,15 @@ function AppContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FAFAF8] text-[#09090B]">
-        <div className="w-12 h-12 rounded-xl bg-[#09090B] text-white flex items-center justify-center font-black text-xl shadow-sm mb-3">
-          B
+        <div className="w-16 h-16 rounded-full overflow-hidden border border-[#E4E4E7] bg-white shadow-sm mb-3">
+          <img
+            src="/better-ride-logo.png"
+            alt="Better Ride"
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/better-ride-logo.jpg';
+            }}
+          />
         </div>
         <div className="w-5 h-5 border-2 border-[#09090B] border-t-transparent rounded-full animate-spin mb-2" />
         <p className="text-[11px] font-bold text-[#71717A] tracking-wider uppercase">

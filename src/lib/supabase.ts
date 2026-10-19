@@ -10,15 +10,30 @@ let cachedKey: string | null = null;
 export function normalizeSupabaseUrl(rawUrl: string): string {
   if (!rawUrl) return '';
   let url = rawUrl.trim();
-  // Automatically extract project ref if full dashboard settings URL was pasted
-  const dashboardMatch = url.match(/supabase\.com\/dashboard\/project\/([a-zA-Z0-9_-]+)/);
+
+  // If dashboard URL was pasted: e.g. supabase.com/dashboard/project/abcdef/settings/api
+  const dashboardMatch = url.match(/supabase\.com\/dashboard\/project\/([a-zA-Z0-9_-]+)/i);
   if (dashboardMatch && dashboardMatch[1]) {
     return `https://${dashboardMatch[1]}.supabase.co`;
   }
+
+  // If any standard supabase.co domain was provided with paths like /rest/v1 or /auth/v1
+  const supabaseCoMatch = url.match(/([a-zA-Z0-9_-]+)\.supabase\.co/i);
+  if (supabaseCoMatch && supabaseCoMatch[1]) {
+    return `https://${supabaseCoMatch[1]}.supabase.co`;
+  }
+
+  // Otherwise, ensure protocol and strip ALL paths, query strings, and hashes
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = `https://${url}`;
   }
-  return url.replace(/\/+$/, '');
+
+  try {
+    const parsed = new URL(url);
+    return parsed.origin;
+  } catch {
+    return url.replace(/\/+$/, '');
+  }
 }
 
 export function getSupabaseEnvConfig(): { url: string; key: string } {
@@ -35,17 +50,15 @@ export function getSupabaseEnvConfig(): { url: string; key: string } {
     (import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
     '';
 
-  // If a legacy demo project URL was previously saved in localStorage without an API key, clear it
-  if (rawUrl && rawUrl.includes('wcsqvmmiivxtgnoikwwm') && (!key || key.length < 20)) {
-    rawUrl = '';
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem(STORAGE_KEY_SUPABASE_URL);
-      } catch {}
-    }
+  const url = normalizeSupabaseUrl(rawUrl);
+
+  // If stored in localStorage, ensure cleaned normalized URL is saved back
+  if (typeof window !== 'undefined' && rawUrl && rawUrl !== url) {
+    try {
+      localStorage.setItem(STORAGE_KEY_SUPABASE_URL, url);
+    } catch {}
   }
 
-  const url = normalizeSupabaseUrl(rawUrl);
   return { url, key: key.trim() };
 }
 
@@ -132,7 +145,7 @@ export async function getGoogleOAuthUrl(): Promise<string> {
   return data.url;
 }
 
-export async function signInWithGoogle(): Promise<void> {
+export async function signInWithGoogle(): Promise<{ url: string; popup: Window | null }> {
   const { url, key } = getSupabaseEnvConfig();
   const supabase = getSupabase();
   if (!supabase || !key || key.length < 20) {
@@ -147,22 +160,41 @@ export async function signInWithGoogle(): Promise<void> {
     provider: 'google',
     options: {
       redirectTo: currentRedirect,
+      skipBrowserRedirect: true,
       queryParams: {
         prompt: 'select_account',
       },
     },
   });
 
-  if (error) {
-    throw error;
+  if (error || !data?.url) {
+    throw error || new Error('Could not generate Google OAuth URL from Supabase.');
   }
 
-  if (data?.url && typeof window !== 'undefined') {
-    const finalUrl = data.url.includes('apikey=')
-      ? data.url
-      : `${data.url}${data.url.includes('?') ? '&' : '?'}apikey=${encodeURIComponent(key)}`;
-    window.location.href = finalUrl;
+  let popup: Window | null = null;
+  if (typeof window !== 'undefined') {
+    const width = 500;
+    const height = 650;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    try {
+      popup = window.open(
+        data.url,
+        'google_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
+      );
+    } catch (e) {
+      console.warn('Window open error:', e);
+    }
+
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      try {
+        popup = window.open(data.url, '_blank');
+      } catch {}
+    }
   }
+
+  return { url: data.url, popup };
 }
 
 export async function signOut(): Promise<void> {
