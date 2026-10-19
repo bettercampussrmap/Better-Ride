@@ -219,13 +219,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         try {
           const { error: insertErr } = await supabase.from('profiles').insert(newProfile);
           if (insertErr) {
-            await supabase.from('profiles').upsert({
-              id: safeId,
-              display_name: cleanName,
-              email: cleanEmail,
-              avatar_url: avatarUrl,
-              updated_at: new Date().toISOString(),
-            });
+            const { error: upsertErr } = await supabase.from('profiles').upsert(newProfile);
+            if (upsertErr) {
+              console.warn('Supabase profile upsert notice:', upsertErr);
+            }
           }
         } catch (dbErr) {
           console.warn('Supabase database storage error:', dbErr);

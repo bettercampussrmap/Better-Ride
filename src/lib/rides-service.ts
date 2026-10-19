@@ -166,8 +166,8 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
                 slot_id: m.slot_id,
                 user_id: m.user_id,
                 joined_at: m.joined_at,
-                ride_pref: 'auto',
-                target_size: 4,
+                ride_pref: slot.ride_type || 'auto',
+                target_size: slot.target_size || 4,
                 pickup_note: 'SRM AP Gate 3',
                 pickup_point: 'SRM AP Gate 3',
                 profile: prof,
@@ -184,8 +184,8 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             departure_date: slot.departure_date,
             start_time: slot.start_time,
             end_time: slot.end_time,
-            target_size: 4,
-            ride_type: 'auto',
+            target_size: slot.target_size || 4,
+            ride_type: slot.ride_type || 'auto',
             pickup_point: 'SRM AP Gate 3',
             created_at: slot.created_at,
             members: slotMembers,
@@ -296,6 +296,8 @@ export async function createAndJoinRide(params: {
             departure_date: departureDate,
             start_time: startTime,
             end_time: endTime,
+            target_size: validTargetSize,
+            ride_type: ridePref,
           })
           .select()
           .maybeSingle();
@@ -479,6 +481,29 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
   const supabase = getSupabase();
   if (supabase) {
     try {
+      const profileMap = new Map<string, any>();
+      try {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, display_name, email, avatar_url');
+        if (profiles) {
+          profiles.forEach((p: any) => {
+            if (p.id) profileMap.set(p.id, p);
+          });
+        }
+      } catch {}
+
+      let localUsers: Record<string, any> = {};
+      let usersById: Record<string, any> = {};
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('better_ride_database_users');
+          if (raw) localUsers = JSON.parse(raw);
+          const rawById = localStorage.getItem('better_ride_users_by_id');
+          if (rawById) usersById = JSON.parse(rawById);
+        } catch {}
+      }
+
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -487,32 +512,37 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
 
       if (!error && data) {
         return data.map((d: any) => {
-          let author = 'Campus Member';
-          let authorId = d.user_id;
-          let text = d.content;
+          const matchedProf = profileMap.get(d.user_id);
+          const matchedById = usersById[d.user_id];
+          const matchedLocal = Object.values(localUsers).find(
+            (u: any) => u.id === d.user_id
+          ) as any;
 
+          let text = d.content;
           try {
             if (d.content && d.content.startsWith('{')) {
               const parsed = JSON.parse(d.content);
-              if (parsed && typeof parsed === 'object') {
-                if (parsed.text) text = parsed.text;
-                if (parsed.author) author = parsed.author;
-                if (parsed.authorId) authorId = parsed.authorId;
-              }
+              if (parsed && parsed.text) text = parsed.text;
             }
           } catch {}
+
+          const authorName =
+            matchedProf?.display_name ||
+            matchedById?.display_name ||
+            matchedLocal?.display_name ||
+            'Student';
 
           return {
             id: d.id,
             slot_id: d.slot_id,
-            user_id: authorId,
+            user_id: d.user_id,
             content: text,
             created_at: d.created_at,
             profile: {
-              id: authorId,
-              display_name: author,
-              email: null,
-              avatar_url: null,
+              id: d.user_id,
+              display_name: authorName,
+              email: matchedProf?.email || matchedLocal?.email || null,
+              avatar_url: matchedProf?.avatar_url || matchedLocal?.avatar_url || null,
               created_at: d.created_at,
               updated_at: d.created_at,
             },
@@ -539,31 +569,26 @@ export async function postMessageToSlot(
   const trimmed = content.trim();
   if (!trimmed) return null;
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
-  const senderName = userName || 'Campus Member';
+  const senderName = userName || 'Student';
 
   const supabase = getSupabase();
   if (supabase && isValidUuid(slotId)) {
     try {
-      const payload = JSON.stringify({
-        author: senderName,
-        authorId: validUserId,
-        text: trimmed,
-      });
       const { data, error } = await supabase.from('messages').insert({
         slot_id: slotId,
-        user_id: SHARED_SYSTEM_AUTH_USER,
-        content: payload,
+        user_id: validUserId,
+        content: trimmed,
       }).select('*').maybeSingle();
 
       if (!error && data) {
         return {
           id: data.id,
           slot_id: data.slot_id,
-          user_id: validUserId,
-          content: trimmed,
+          user_id: data.user_id,
+          content: data.content,
           created_at: data.created_at,
           profile: {
-            id: validUserId,
+            id: data.user_id,
             display_name: senderName,
             email: null,
             avatar_url: null,
@@ -571,9 +596,11 @@ export async function postMessageToSlot(
             updated_at: data.created_at,
           },
         };
+      } else if (error) {
+        console.warn('Supabase postMessageToSlot error:', error);
       }
     } catch (e) {
-      console.warn('Supabase postMessageToSlot error:', e);
+      console.warn('Supabase postMessageToSlot exception:', e);
     }
   }
 

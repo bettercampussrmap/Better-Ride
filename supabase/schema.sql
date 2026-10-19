@@ -32,16 +32,12 @@ BEGIN
         ALTER TABLE public.messages ALTER COLUMN user_id TYPE TEXT USING user_id::text;
     END IF;
 
-    -- 3. Add ride coordination columns if missing
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'slot_members') THEN
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'slot_members' AND column_name = 'target_size') THEN
-            ALTER TABLE public.slot_members ADD COLUMN target_size INT DEFAULT 4;
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'profiles') THEN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'password') THEN
+            ALTER TABLE public.profiles ADD COLUMN password TEXT;
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'slot_members' AND column_name = 'ride_pref') THEN
-            ALTER TABLE public.slot_members ADD COLUMN ride_pref TEXT DEFAULT 'auto';
-        END IF;
-        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'slot_members' AND column_name = 'pickup_note') THEN
-            ALTER TABLE public.slot_members ADD COLUMN pickup_note TEXT;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'gender') THEN
+            ALTER TABLE public.profiles ADD COLUMN gender TEXT;
         END IF;
     END IF;
 
@@ -59,6 +55,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     id TEXT PRIMARY KEY,
     display_name TEXT,
     email TEXT,
+    gender TEXT,
+    password TEXT,
     avatar_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
