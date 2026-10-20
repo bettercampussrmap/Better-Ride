@@ -5,6 +5,7 @@ import { SlotWithDetails } from '../../types/database';
 
 interface HomeViewProps {
   userName: string;
+  userEmail?: string;
   selectedDestination: string;
   onSelectDestination: (dest: string) => void;
   onFindRide: (dest?: string) => void;
@@ -17,6 +18,7 @@ interface HomeViewProps {
 
 export const HomeView: React.FC<HomeViewProps> = ({
   userName,
+  userEmail,
   selectedDestination,
   onSelectDestination,
   onFindRide,
@@ -107,6 +109,75 @@ export const HomeView: React.FC<HomeViewProps> = ({
     onSelectDestination(chosen);
     onFindRide(chosen);
   };
+
+  const isAdmin = userEmail?.toLowerCase() === 'adminbcc@gmail.com';
+
+  const [feedbackLogs, setFeedbackLogs] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('better_ride_feedback_logs');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const handleClearFeedbackLogs = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('better_ride_feedback_logs');
+      setFeedbackLogs([]);
+    }
+  };
+
+  if (isAdmin) {
+    return (
+      <div className="space-y-4 animate-in fade-in duration-200">
+        <div className="bg-white rounded-2xl border border-[#E4E4E7] p-4 shadow-md space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E7]">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-[#09090B] text-white flex items-center justify-center font-bold text-sm">
+                🛡️
+              </span>
+              <div>
+                <h2 className="text-sm font-extrabold text-[#09090B]">BCC Admin Panel</h2>
+                <p className="text-[10px] text-[#71717A]">Viewing all student feedback and suggestions</p>
+              </div>
+            </div>
+            {feedbackLogs.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearFeedbackLogs}
+                className="text-[10px] font-bold text-red-600 hover:underline cursor-pointer"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-0.5">
+            {feedbackLogs.length === 0 ? (
+              <div className="py-12 text-center text-xs text-[#71717A] space-y-1">
+                <p className="font-bold text-[#09090B]">No student feedback submitted yet</p>
+                <p className="text-[10px]">Feedback submitted from user profiles will appear here instantly.</p>
+              </div>
+            ) : (
+              feedbackLogs.map((log: any, idx: number) => (
+                <div key={idx} className="bg-[#FAFAF8] rounded-xl border border-[#E4E4E7] p-3 space-y-1.5 shadow-2xs">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="font-bold text-[#09090B]">{log.user || 'Student'} ({log.email || 'N/A'})</span>
+                    <span className="text-[#71717A]">{new Date(log.createdAt).toLocaleString()}</span>
+                  </div>
+                  <p className="text-xs text-[#3F3F46] font-medium leading-relaxed bg-white p-2 rounded-lg border border-[#E4E4E7]/60">
+                    "{log.text}"
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">

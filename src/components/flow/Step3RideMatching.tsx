@@ -87,7 +87,14 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
             const targetSeats = group.target_size || 4;
             const isFull = memberCount >= targetSeats;
             const isJoined = group.isUserJoined || group.members?.some((m) => m.user_id === currentUserId);
-            const creatorName = group.members?.[0]?.profile?.display_name || 'Campus Peer';
+            const firstMemberProf = group.members?.[0]?.profile;
+            const creatorDisplayName = firstMemberProf?.display_name?.trim();
+            const creatorName =
+              creatorDisplayName && creatorDisplayName.toLowerCase() !== 'student'
+                ? creatorDisplayName
+                : firstMemberProf?.email
+                ? firstMemberProf.email.split('@')[0]
+                : 'Peer';
 
             return (
               <div
@@ -138,18 +145,38 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
                 <div className="bg-[#F4F4F5] rounded-lg p-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="flex -space-x-1.5 overflow-hidden">
-                      {group.members?.slice(0, 4).map((m, mIdx) => (
-                        <div
-                          key={m.id || mIdx}
-                          className="w-5 h-5 rounded-full bg-[#09090B] text-white flex items-center justify-center font-bold text-[8px] ring-1 ring-white shrink-0"
-                          title={m.profile?.display_name || 'Member'}
-                        >
-                          {m.profile?.display_name?.charAt(0) || 'S'}
-                        </div>
-                      ))}
+                      {group.members?.slice(0, 4).map((m, mIdx) => {
+                        const mDisplayName = m.profile?.display_name?.trim();
+                        const realName =
+                          mDisplayName && mDisplayName.toLowerCase() !== 'student'
+                            ? mDisplayName
+                            : m.profile?.email
+                            ? m.profile.email.split('@')[0]
+                            : 'Peer';
+                        return (
+                          <div
+                            key={m.id || mIdx}
+                            className="w-5 h-5 rounded-full bg-[#09090B] text-white flex items-center justify-center font-bold text-[8px] ring-1 ring-white shrink-0"
+                            title={realName}
+                          >
+                            {realName.charAt(0).toUpperCase()}
+                          </div>
+                        );
+                      })}
                     </div>
                     <span className="text-[10px] font-semibold text-[#09090B] truncate max-w-[170px]">
-                      {group.members?.map((m) => m.profile?.display_name?.split(' ')[0] || 'Peer').join(', ')}
+                      {group.members
+                        ?.map((m) => {
+                          const mDisplayName = m.profile?.display_name?.trim();
+                          const realName =
+                            mDisplayName && mDisplayName.toLowerCase() !== 'student'
+                              ? mDisplayName
+                              : m.profile?.email
+                              ? m.profile.email.split('@')[0]
+                              : 'Peer';
+                          return realName.split(' ')[0];
+                        })
+                        .join(', ')}
                     </span>
                   </div>
 

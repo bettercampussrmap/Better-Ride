@@ -119,8 +119,8 @@ function AppContent() {
         }
       }
 
-      // 2. Check Supabase session if configured
-      if (isSupabaseConfigured()) {
+      // 2. Check Supabase session if configured (only if no active user session is stored)
+      if (!hasActiveUser && isSupabaseConfigured()) {
         const supabase = getSupabase();
         if (supabase) {
           try {

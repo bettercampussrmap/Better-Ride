@@ -46,7 +46,22 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
       try {
         const msgs = await fetchMessagesForSlot(ride.id);
         if (isMounted) {
-          setMessages(msgs);
+          setMessages((prev) => {
+            const map = new Map<string, Message>();
+            msgs.forEach((m) => map.set(m.id, m));
+            // Preserve optimistic temp messages if not yet received
+            prev.forEach((m) => {
+              if (m.id.startsWith('temp-') && !map.has(m.id)) {
+                const alreadySynced = msgs.some(
+                  (sm) => sm.content === m.content && sm.user_id === m.user_id
+                );
+                if (!alreadySynced) map.set(m.id, m);
+              }
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
           setLoading(false);
         }
       } catch (err) {
@@ -56,12 +71,29 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
 
     loadFreshMessages();
 
-    // 1. Supabase Postgres Realtime listener
+    // 1. Listen for local immediate message events across tabs/modals
+    const handleLocalMsg = (e: any) => {
+      if (e.detail?.slotId === ride.id && e.detail?.message) {
+        const incoming = e.detail.message as Message;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === incoming.id || (m.content === incoming.content && m.user_id === incoming.user_id))) {
+            return prev;
+          }
+          return [...prev, incoming];
+        });
+        setTimeout(scrollToBottom, 50);
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('slot_message_received', handleLocalMsg);
+    }
+
+    // 2. Supabase Realtime WebSocket listener (Postgres changes + Live Broadcast)
     const supabase = getSupabase();
     let channel: any = null;
     if (supabase) {
       channel = supabase
-        .channel(`realtime_chat_${ride.id}`)
+        .channel(`slot_live_chat_${ride.id}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'messages', filter: `slot_id=eq.${ride.id}` },
@@ -70,22 +102,46 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
             setTimeout(scrollToBottom, 60);
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'time_slots' },
+          () => {
+            loadFreshMessages();
+            setTimeout(scrollToBottom, 60);
+          }
+        )
+        .on('broadcast', { event: 'new_msg' }, (payload: any) => {
+          if (payload?.payload) {
+            const incoming = payload.payload as Message;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === incoming.id || (m.content === incoming.content && m.user_id === incoming.user_id))) {
+                return prev;
+              }
+              return [...prev, incoming];
+            });
+            setTimeout(scrollToBottom, 50);
+          }
+          loadFreshMessages();
+        })
         .subscribe();
     }
 
-    // 2. Continuous 2.5-second polling to guarantee instant synchronization across all devices
+    // 3. Fast 1.5-second polling to guarantee instant synchronization across all devices and connections
     const pollInterval = setInterval(() => {
       loadFreshMessages();
-    }, 2500);
+    }, 1500);
 
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('slot_message_received', handleLocalMsg);
+      }
       if (supabase && channel) {
         supabase.removeChannel(channel);
       }
     };
-  }, [ride]);
+  }, [ride?.id]);
 
   useEffect(() => {
     scrollToBottom();
@@ -186,7 +242,15 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
         ) : (
           messages.map((msg) => {
             const isMe = msg.user_id === currentUserId;
-            const senderName = msg.profile?.display_name || (isMe ? 'You' : 'Student');
+            const candidateName = msg.profile?.display_name;
+            const senderName =
+              candidateName && candidateName.toLowerCase() !== 'student'
+                ? candidateName
+                : msg.profile?.email
+                ? msg.profile.email.split('@')[0]
+                : isMe
+                ? 'You'
+                : 'SRM Peer';
 
             return (
               <div

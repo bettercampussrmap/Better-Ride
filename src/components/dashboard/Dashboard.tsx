@@ -88,25 +88,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const currentUserId = user?.id || '';
 
   // Load real rides
-  const loadRides = useCallback(async () => {
-    setLoadingRides(true);
-    const data = await fetchAllRides(currentUserId);
-    setRides(data);
-    setLoadingRides(false);
-  }, [currentUserId]);
+  const loadRides = useCallback(
+    async (isInitial = false) => {
+      if (isInitial) setLoadingRides(true);
+      const data = await fetchAllRides(currentUserId);
+      setRides(data);
+
+      // Keep active ride updated in real time so new members and seat counts reflect immediately
+      setSelectedRide((prev) => {
+        if (!prev) return prev;
+        const fresh = data.find((r) => r.id === prev.id);
+        return fresh || prev;
+      });
+
+      if (isInitial) setLoadingRides(false);
+    },
+    [currentUserId]
+  );
 
   useEffect(() => {
-    loadRides();
+    loadRides(true);
 
-    // Subscribe to Postgres Realtime changes from Supabase
+    // Subscribe to Postgres Realtime changes & broadcasts from Supabase
     const unsubscribe = subscribeToRideUpdates(() => {
-      loadRides();
+      loadRides(false);
     });
 
-    // Periodic background sync every 5 seconds so waiting lists sync across all devices
+    // High-frequency 1.5-second background sync so member joins and slots update real time without reloading
     const interval = setInterval(() => {
-      loadRides();
-    }, 5000);
+      loadRides(false);
+    }, 1500);
 
     return () => {
       unsubscribe();
@@ -372,6 +383,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {flowScreen === 'home_main' && (
               <HomeView
                 userName={userName}
+                userEmail={user?.email}
                 selectedDestination={destination}
                 onSelectDestination={setDestination}
                 onFindRide={handleStartFindRide}

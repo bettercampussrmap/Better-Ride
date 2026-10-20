@@ -22,12 +22,14 @@ import { fetchMessagesForSlot, postMessageToSlot } from '../../lib/rides-service
 interface SlotChatModalProps {
   slot: SlotWithDetails | null;
   currentUserId: string;
+  userName?: string;
   onClose: () => void;
 }
 
 export const SlotChatModal: React.FC<SlotChatModalProps> = ({
   slot,
   currentUserId,
+  userName,
   onClose,
 }) => {
   const { showToast } = useToast();
@@ -52,30 +54,15 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
     '👜 1 trolley bag with me',
   ];
 
-  // Load message history & subscribe to Supabase Realtime channel
+  const effectiveUserName =
+    userName ||
+    slot?.members?.find((m) => m.user_id === currentUserId || m.user_id === toValidUuid(currentUserId))
+      ?.profile?.display_name ||
+    'SRM Peer';
+
+  // Load message history & subscribe to Supabase Realtime channel + fast polling
   useEffect(() => {
     if (!slot) return;
-
-    if (!isSupabaseConfigured()) {
-      const saved = localStorage.getItem(`local_chat_${slot.id}`);
-      if (saved) {
-        try {
-          setMessages(JSON.parse(saved));
-        } catch {
-          setMessages([]);
-        }
-      } else {
-        setMessages([]);
-      }
-      setLoading(false);
-      return;
-    }
-
-    const supabase = getSupabase();
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
 
     let isMounted = true;
     setLoading(true);
@@ -86,8 +73,22 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
       try {
         const loadedMessages = await fetchMessagesForSlot(slot.id);
         if (isMounted) {
-          setMessages(loadedMessages);
-          setTimeout(scrollToBottom, 100);
+          setMessages((prev) => {
+            const map = new Map<string, Message>();
+            loadedMessages.forEach((m) => map.set(m.id, m));
+            prev.forEach((m) => {
+              if (m.id.startsWith('temp-') && !map.has(m.id)) {
+                const alreadySynced = loadedMessages.some(
+                  (sm) => sm.content === m.content && sm.user_id === m.user_id
+                );
+                if (!alreadySynced) map.set(m.id, m);
+              }
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+          });
+          setTimeout(scrollToBottom, 60);
         }
       } catch (err: any) {
         if (isMounted) setError(err?.message || 'Error connecting to messages');
@@ -98,67 +99,85 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
 
     fetchMessages();
 
-    // 2. Setup slot-specific Supabase Realtime channel
-    const channelName = `slot-chat-${slot.id}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `slot_id=eq.${slot.id}`,
-        },
-        async (payload) => {
-          const newMsg = payload.new as Message;
-
-          // Fetch sender profile if not populated
-          let senderProfile = slot.members.find((m) => m.user_id === newMsg.user_id)?.profile;
-          if (!senderProfile) {
-            const { data: profData } = await supabase
-              .from('profiles')
-              .select('id, display_name, email, avatar_url')
-              .eq('id', newMsg.user_id)
-              .maybeSingle();
-            if (profData) senderProfile = profData as any;
+    // 2. Listen to local event
+    const handleLocalMsg = (e: any) => {
+      if (e.detail?.slotId === slot.id && e.detail?.message) {
+        const incoming = e.detail.message as Message;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === incoming.id || (m.content === incoming.content && m.user_id === incoming.user_id))) {
+            return prev;
           }
+          return [...prev, incoming];
+        });
+        setTimeout(scrollToBottom, 50);
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('slot_message_received', handleLocalMsg);
+    }
 
-          const messageWithProfile: Message = {
-            ...newMsg,
-            profile: senderProfile,
-          };
-
-          if (isMounted) {
+    // 3. Setup slot-specific Supabase Realtime channel
+    const supabase = getSupabase();
+    let channel: any = null;
+    if (supabase) {
+      const channelName = `slot_live_chat_${slot.id}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'messages',
+            filter: `slot_id=eq.${slot.id}`,
+          },
+          () => {
+            fetchMessages();
+            setTimeout(scrollToBottom, 60);
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'time_slots',
+          },
+          () => {
+            fetchMessages();
+            setTimeout(scrollToBottom, 60);
+          }
+        )
+        .on('broadcast', { event: 'new_msg' }, (payload: any) => {
+          if (payload?.payload) {
+            const incoming = payload.payload as Message;
             setMessages((prev) => {
-              // Deduplicate by message ID OR by content + user + timestamp similarity
-              const isDuplicate = prev.some((m) => {
-                const sameId = m.id === messageWithProfile.id;
-                const sameMsg = 
-                  m.content === messageWithProfile.content &&
-                  m.user_id === messageWithProfile.user_id &&
-                  Math.abs(new Date(m.created_at).getTime() - new Date(messageWithProfile.created_at).getTime()) < 5000;
-                return sameId || sameMsg;
-              });
-
-              if (isDuplicate) {
+              if (prev.some((m) => m.id === incoming.id || (m.content === incoming.content && m.user_id === incoming.user_id))) {
                 return prev;
               }
-              return [...prev, messageWithProfile];
+              return [...prev, incoming];
             });
             setTimeout(scrollToBottom, 50);
           }
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          console.warn('Realtime channel error for slot:', slot.id);
-        }
-      });
+          fetchMessages();
+        })
+        .subscribe();
+    }
+
+    // 4. Fast 1.5-second polling interval while modal is open
+    const pollInterval = setInterval(() => {
+      fetchMessages();
+    }, 1500);
 
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('slot_message_received', handleLocalMsg);
+      }
+      if (supabase && channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [slot?.id]);
 
@@ -182,7 +201,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
     setSending(true);
 
     try {
-      const saved = await postMessageToSlot(slot.id, currentUserId, trimmed);
+      const saved = await postMessageToSlot(slot.id, currentUserId, trimmed, effectiveUserName);
       if (saved) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === saved.id)) return prev;
@@ -272,8 +291,16 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
             </h4>
             <div className="space-y-1.5">
               {slot.members.map((m) => {
-                const name = m.profile?.display_name || m.profile?.email?.split('@')[0] || 'Student';
                 const isMe = m.user_id === currentUserId || m.user_id === toValidUuid(currentUserId);
+                const candidate = m.profile?.display_name;
+                const name =
+                  candidate && candidate.toLowerCase() !== 'student'
+                    ? candidate
+                    : m.profile?.email
+                    ? m.profile.email.split('@')[0]
+                    : isMe
+                    ? 'You'
+                    : 'SRM Peer';
                 return (
                   <div
                     key={m.id}
@@ -343,10 +370,15 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
               const isMe =
                 msg.user_id === currentUserId ||
                 msg.user_id === toValidUuid(currentUserId);
+              const candidate = msg.profile?.display_name;
               const senderName =
-                msg.profile?.display_name ||
-                msg.profile?.email?.split('@')[0] ||
-                (isMe ? 'You' : 'Student');
+                candidate && candidate.toLowerCase() !== 'student'
+                  ? candidate
+                  : msg.profile?.email
+                  ? msg.profile.email.split('@')[0]
+                  : isMe
+                  ? 'You'
+                  : 'SRM Peer';
               const avatar = msg.profile?.avatar_url;
 
               return (

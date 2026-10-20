@@ -16,7 +16,22 @@ export function getLocalDatabaseUsers(): Record<string, Profile> {
   if (typeof window === 'undefined') return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LOCAL_USERS);
-    return raw ? JSON.parse(raw) : {};
+    const db = raw ? JSON.parse(raw) : {};
+
+    const adminEmail = 'adminbcc@gmail.com';
+    if (!db[adminEmail]) {
+      db[adminEmail] = {
+        id: toValidUuid('srm-student-adminbcc@gmail.com'),
+        display_name: 'BCC Admin',
+        email: adminEmail,
+        password: 'admin1234bcc',
+        avatar_url: 'https://api.dicebear.com/7.x/initials/svg?seed=Admin&backgroundColor=09090B',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      localStorage.setItem(STORAGE_KEY_LOCAL_USERS, JSON.stringify(db));
+    }
+    return db;
   } catch {
     return {};
   }
