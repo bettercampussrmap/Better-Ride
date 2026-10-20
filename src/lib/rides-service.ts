@@ -229,22 +229,28 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             try {
               const parsed = JSON.parse(s.destination.replace('__better_ride_member__:', ''));
               if (parsed && parsed.slot_id && slotIds.includes(parsed.slot_id)) {
+                // Use a deterministic ID based on slot_id and user_id to avoid duplicates
+                const stableId = toValidUuid(`fallback-${parsed.slot_id}-${parsed.user_id}`);
                 const existing = membersData.find(
                   (m) => m.slot_id === parsed.slot_id && m.user_id === parsed.user_id
                 );
+                
                 if (existing) {
-                  if (parsed.name) {
+                  if (parsed.name && !existing.pickup_note?.includes(parsed.name)) {
                     existing.pickup_note = JSON.stringify({ name: parsed.name, avatar: parsed.avatar });
                   }
                 } else {
-                  membersData.push({
-                    id: parsed.id || `fb-mem-${Date.now()}`,
-                    slot_id: parsed.slot_id,
-                    user_id: parsed.user_id,
-                    joined_at: parsed.joined_at || s.created_at,
-                    pickup_note: JSON.stringify({ name: parsed.name, avatar: parsed.avatar }),
-                    ride_pref: parsed.ride_pref || 'auto',
-                  });
+                  // Only add if not already present
+                  if (!membersData.some(m => m.id === stableId)) {
+                    membersData.push({
+                      id: stableId,
+                      slot_id: parsed.slot_id,
+                      user_id: parsed.user_id,
+                      joined_at: parsed.joined_at || s.created_at,
+                      pickup_note: JSON.stringify({ name: parsed.name, avatar: parsed.avatar }),
+                      ride_pref: parsed.ride_pref || 'auto',
+                    });
+                  }
                 }
               }
             } catch {}
@@ -277,10 +283,10 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
               const isCurrentUser = Boolean(safeCurrentUserId && m.user_id === safeCurrentUserId);
 
               const candidateName =
-                embeddedName ||
                 matchedProf?.display_name ||
                 matchedById?.display_name ||
-                matchedLocal?.display_name;
+                matchedLocal?.display_name ||
+                embeddedName;
 
               const hasValidRealName =
                 candidateName &&
@@ -628,7 +634,7 @@ export async function leaveRideInSupabase(slotId: string, userId: string): Promi
         .from('slot_members')
         .delete()
         .eq('slot_id', slotId)
-        .eq('user_id', validUserId);
+        .in('user_id', [validUserId, userId]);
 
       // Clean up any fallback membership in time_slots
       const { data: memberSlots } = await supabase
@@ -641,7 +647,7 @@ export async function leaveRideInSupabase(slotId: string, userId: string): Promi
         for (const ms of memberSlots) {
           try {
             const parsed = JSON.parse(ms.destination.replace('__better_ride_member__:', ''));
-            if (parsed.slot_id === slotId && parsed.user_id === validUserId) {
+            if (parsed.slot_id === slotId && (parsed.user_id === validUserId || parsed.user_id === userId)) {
               await supabase.from('time_slots').delete().eq('id', ms.id);
             }
           } catch {}
@@ -656,7 +662,7 @@ export async function leaveRideInSupabase(slotId: string, userId: string): Promi
   const localRides = loadLocalRides();
   const ride = localRides.find((s) => s.id === slotId);
   if (ride) {
-    ride.members = ride.members.filter((m) => m.user_id !== validUserId);
+    ride.members = ride.members.filter((m) => m.user_id !== validUserId && m.user_id !== userId && m.user_id !== userId);
     ride.memberCount = ride.members.length;
     ride.isUserJoined = false;
     saveLocalRides(localRides);
@@ -842,12 +848,25 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
           (u: any) => u.id === effectiveUserId || (matchedProf?.email && u.email?.toLowerCase() === matchedProf.email.toLowerCase())
         ) as any;
 
-        const authorName =
-          senderNameFromContent ||
+        const candidateAuthorName =
           matchedProf?.display_name ||
           matchedById?.display_name ||
           matchedLocal?.display_name ||
-          (matchedProf?.email ? matchedProf.email.split('@')[0] : 'Member');
+          senderNameFromContent;
+
+        const hasValidAuthorName =
+          candidateAuthorName &&
+          candidateAuthorName.trim() !== '' &&
+          candidateAuthorName.trim().toLowerCase() !== 'student' &&
+          candidateAuthorName.trim().toLowerCase() !== 'member';
+
+        const authorName = hasValidAuthorName
+          ? candidateAuthorName.trim()
+          : matchedProf?.email
+          ? matchedProf.email.split('@')[0]
+          : matchedLocal?.email
+          ? matchedLocal.email.split('@')[0]
+          : 'SRM Peer';
 
         return {
           id: d.id,
