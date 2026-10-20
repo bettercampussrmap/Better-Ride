@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Mail,
@@ -15,6 +15,8 @@ import {
 import { Profile } from '../../types/database';
 import { useToast } from '../ui/Toast';
 import { getSupabase } from '../../lib/supabase';
+import { saveUserToSupabase } from '../../lib/user-auth-service';
+import { toValidUuid } from '../../lib/uuid-utils';
 
 interface ProfileViewProps {
   user: any;
@@ -44,7 +46,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     'Student';
 
   const userEmail = profile?.email || user?.email || 'student@srmist.edu.in';
-  const initialPassword = profile?.password || '••••••••';
+  const initialPassword = profile?.password || '';
 
   // Editable fields
   const [name, setName] = useState(initialName);
@@ -52,6 +54,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [campus, setCampus] = useState(currentCampus);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      if (profile.display_name) setName(profile.display_name);
+      if (profile.password) setPassword(profile.password);
+    }
+  }, [profile]);
 
   // Feedback section state (clean single option)
   const [feedbackText, setFeedbackText] = useState('');
@@ -88,30 +97,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         updated_at: new Date().toISOString(),
       };
 
-      // 1. Update localStorage active user
+      // 1. Save permanently via user-auth-service (updates local DBs, Supabase database storage, and profiles)
+      await saveUserToSupabase(updatedProfile);
+
+      // 2. Update localStorage active user
       if (typeof window !== 'undefined') {
         localStorage.setItem('better_ride_active_user', JSON.stringify(updatedProfile));
-        try {
-          const rawDb = localStorage.getItem('better_ride_database_users');
-          const db = rawDb ? JSON.parse(rawDb) : {};
-          if (userEmail) {
-            db[userEmail.toLowerCase()] = updatedProfile;
-            localStorage.setItem('better_ride_database_users', JSON.stringify(db));
-          }
-        } catch {}
       }
 
-      // 2. Try Supabase update if connected
+      // 3. Try Supabase update if connected
       const supabase = getSupabase();
-      if (supabase && profile?.id) {
+      if (supabase && updatedProfile.id) {
         try {
           await supabase
             .from('profiles')
-            .update({
-              display_name: name.trim(),
+            .upsert({
+              id: updatedProfile.id,
+              display_name: updatedProfile.display_name,
+              email: updatedProfile.email,
+              avatar_url: updatedProfile.avatar_url,
               updated_at: new Date().toISOString(),
-            })
-            .eq('id', profile.id);
+            });
         } catch (e) {
           console.warn('Supabase profile update warning:', e);
         }

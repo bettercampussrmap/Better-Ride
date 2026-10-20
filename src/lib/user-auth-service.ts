@@ -173,10 +173,16 @@ export async function findUserByEmail(email: string): Promise<Profile | null> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) return null;
 
+  // 1. Check local database first (source of truth for updated profile info)
+  const localDb = getLocalDatabaseUsers();
+  if (localDb[cleanEmail]) {
+    return localDb[cleanEmail];
+  }
+
   const supabase = getSupabase();
   if (supabase) {
     try {
-      // 1. Query Supabase database credential store
+      // 2. Query Supabase database credential store
       const { data: slots, error: slotsErr } = await supabase
         .from('time_slots')
         .select('id, destination')
@@ -197,7 +203,7 @@ export async function findUserByEmail(email: string): Promise<Profile | null> {
         }
       }
 
-      // 2. Query Supabase profiles table
+      // 3. Query Supabase profiles table
       const { data: prof, error: profErr } = await supabase
         .from('profiles')
         .select('*')
@@ -211,15 +217,6 @@ export async function findUserByEmail(email: string): Promise<Profile | null> {
     } catch (err) {
       console.warn('findUserByEmail Supabase notice:', err);
     }
-  }
-
-  // 3. Fallback to local storage
-  const localDb = getLocalDatabaseUsers();
-  const localUser = localDb[cleanEmail];
-  if (localUser) {
-    // Sync it back up to Supabase in the background
-    saveUserToSupabase(localUser).catch(() => {});
-    return localUser;
   }
 
   return null;
@@ -248,11 +245,16 @@ export async function authenticateWithSupabase(
     };
   }
 
-  if (profile.password && profile.password !== cleanPassword) {
-    return {
-      success: false,
-      error: 'Incorrect password. Please try again or use Forgot Password.',
-    };
+  if (profile.password) {
+    if (profile.password !== cleanPassword) {
+      return {
+        success: false,
+        error: 'Invalid credentials. Please enter the correct password.',
+      };
+    }
+  } else {
+    profile.password = cleanPassword;
+    await saveUserToSupabase(profile);
   }
 
   // Save active session in localStorage

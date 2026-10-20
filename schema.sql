@@ -79,7 +79,6 @@ CREATE TABLE IF NOT EXISTS public.time_slots (
     target_size INT DEFAULT 4,
     ride_type TEXT DEFAULT 'auto',
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    CONSTRAINT uq_slot_dest_date_window UNIQUE (destination, departure_date, start_time, end_time),
     CONSTRAINT chk_slot_time_order CHECK (start_time < end_time)
 );
 CREATE INDEX IF NOT EXISTS idx_time_slots_dest_date ON public.time_slots(destination, departure_date);

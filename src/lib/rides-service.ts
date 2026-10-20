@@ -325,6 +325,8 @@ export async function createAndJoinRide(params: {
               departure_date: departureDate,
               start_time: startTime,
               end_time: endTime,
+              target_size: validTargetSize,
+              ride_type: ridePref,
             })
             .select()
             .maybeSingle();
