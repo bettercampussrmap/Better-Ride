@@ -79,19 +79,30 @@ export async function saveUserToSupabase(profile: Profile): Promise<{ success: b
   const supabase = getSupabase();
   if (supabase) {
     try {
-      // 1. Try standard profiles table (in case schema allows it)
+      // 1. Upsert into public.profiles table (handling both name and display_name columns)
       try {
-        await supabase.from('profiles').upsert({
+        const cleanName = cleanProfile.name || cleanProfile.display_name;
+        const { error: errWithBoth } = await supabase.from('profiles').upsert({
           id: cleanProfile.id,
-          display_name: cleanProfile.display_name,
+          name: cleanName,
+          display_name: cleanName,
           email: cleanProfile.email,
           avatar_url: cleanProfile.avatar_url,
-          password: cleanProfile.password,
-          gender: cleanProfile.gender,
           updated_at: cleanProfile.updated_at,
         });
+
+        if (errWithBoth) {
+          // Fallback if 'name' column does not exist yet in schema
+          await supabase.from('profiles').upsert({
+            id: cleanProfile.id,
+            display_name: cleanName,
+            email: cleanProfile.email,
+            avatar_url: cleanProfile.avatar_url,
+            updated_at: cleanProfile.updated_at,
+          });
+        }
       } catch (e) {
-        // If optional columns or RLS fails on profiles, we fall through to primary store
+        console.warn('Profile upsert exception:', e);
       }
 
       // 2. Persist user credentials directly in Supabase database storage

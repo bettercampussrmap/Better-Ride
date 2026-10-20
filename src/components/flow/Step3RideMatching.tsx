@@ -88,13 +88,13 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
             const isFull = memberCount >= targetSeats;
             const isJoined = group.isUserJoined || group.members?.some((m) => m.user_id === currentUserId);
             const firstMemberProf = group.members?.[0]?.profile;
-            const creatorDisplayName = firstMemberProf?.display_name?.trim();
+            const creatorDisplayName = firstMemberProf?.name?.trim() || firstMemberProf?.display_name?.trim();
             const creatorName =
               creatorDisplayName && creatorDisplayName.toLowerCase() !== 'student'
                 ? creatorDisplayName
                 : firstMemberProf?.email
                 ? firstMemberProf.email.split('@')[0]
-                : 'Peer';
+                : 'Host';
 
             return (
               <div
@@ -146,13 +146,15 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
                   <div className="flex items-center gap-2">
                     <div className="flex -space-x-1.5 overflow-hidden">
                       {group.members?.slice(0, 4).map((m, mIdx) => {
-                        const mDisplayName = m.profile?.display_name?.trim();
+                        const mDisplayName = m.profile?.name?.trim() || m.profile?.display_name?.trim();
                         const realName =
                           mDisplayName && mDisplayName.toLowerCase() !== 'student'
                             ? mDisplayName
                             : m.profile?.email
                             ? m.profile.email.split('@')[0]
-                            : 'Peer';
+                            : m.user_id === currentUserId
+                            ? 'You'
+                            : 'Member';
                         return (
                           <div
                             key={m.id || mIdx}
@@ -167,13 +169,15 @@ export const Step3RideMatching: React.FC<Step3RideMatchingProps> = ({
                     <span className="text-[10px] font-semibold text-[#09090B] truncate max-w-[170px]">
                       {group.members
                         ?.map((m) => {
-                          const mDisplayName = m.profile?.display_name?.trim();
+                          const mDisplayName = m.profile?.name?.trim() || m.profile?.display_name?.trim();
                           const realName =
                             mDisplayName && mDisplayName.toLowerCase() !== 'student'
                               ? mDisplayName
                               : m.profile?.email
                               ? m.profile.email.split('@')[0]
-                              : 'Peer';
+                              : m.user_id === currentUserId
+                              ? 'You'
+                              : 'Member';
                           return realName.split(' ')[0];
                         })
                         .join(', ')}

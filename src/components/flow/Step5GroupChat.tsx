@@ -242,15 +242,14 @@ export const Step5GroupChat: React.FC<Step5GroupChatProps> = ({
         ) : (
           messages.map((msg) => {
             const isMe = msg.user_id === currentUserId;
-            const candidateName = msg.profile?.display_name;
-            const senderName =
-              candidateName && candidateName.toLowerCase() !== 'student'
-                ? candidateName
-                : msg.profile?.email
-                ? msg.profile.email.split('@')[0]
-                : isMe
-                ? 'You'
-                : 'SRM Peer';
+            const candidateName = msg.profile?.name?.trim() || msg.profile?.display_name?.trim();
+            const senderName = isMe
+              ? 'You'
+              : candidateName && candidateName.toLowerCase() !== 'student'
+              ? candidateName
+              : msg.profile?.email
+              ? msg.profile.email.split('@')[0]
+              : 'Member';
 
             return (
               <div

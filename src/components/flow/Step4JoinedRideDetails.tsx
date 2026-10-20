@@ -129,14 +129,14 @@ export const Step4JoinedRideDetails: React.FC<Step4JoinedRideDetailsProps> = ({
           {ride.members && ride.members.length > 0 ? (
             ride.members.map((member) => {
               const isMe = member.user_id === currentUserId;
-              const displayName = member.profile?.display_name?.trim();
+              const displayName = member.profile?.name?.trim() || member.profile?.display_name?.trim();
               const isGeneric =
                 !displayName ||
                 displayName.toLowerCase() === 'student' ||
                 displayName.toLowerCase() === 'campus member';
               
               const memberName = isGeneric
-                ? (member.profile?.email?.split('@')[0] || (isMe ? userName : 'SRM Peer'))
+                ? (isMe ? userName : member.profile?.email ? member.profile.email.split('@')[0] : 'Member')
                 : displayName;
               const memberAvatar = member.profile?.avatar_url;
 

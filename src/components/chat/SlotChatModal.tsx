@@ -57,8 +57,10 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
   const effectiveUserName =
     userName ||
     slot?.members?.find((m) => m.user_id === currentUserId || m.user_id === toValidUuid(currentUserId))
+      ?.profile?.name ||
+    slot?.members?.find((m) => m.user_id === currentUserId || m.user_id === toValidUuid(currentUserId))
       ?.profile?.display_name ||
-    'SRM Peer';
+    'Member';
 
   // Load message history & subscribe to Supabase Realtime channel + fast polling
   useEffect(() => {
@@ -292,7 +294,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
             <div className="space-y-1.5">
               {slot.members.map((m) => {
                 const isMe = m.user_id === currentUserId || m.user_id === toValidUuid(currentUserId);
-                const candidate = m.profile?.display_name;
+                const candidate = m.profile?.name?.trim() || m.profile?.display_name?.trim();
                 const name =
                   candidate && candidate.toLowerCase() !== 'student'
                     ? candidate
@@ -300,7 +302,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
                     ? m.profile.email.split('@')[0]
                     : isMe
                     ? 'You'
-                    : 'SRM Peer';
+                    : 'Member';
                 return (
                   <div
                     key={m.id}
@@ -370,7 +372,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
               const isMe =
                 msg.user_id === currentUserId ||
                 msg.user_id === toValidUuid(currentUserId);
-              const candidate = msg.profile?.display_name;
+              const candidate = msg.profile?.name?.trim() || msg.profile?.display_name?.trim();
               const senderName =
                 candidate && candidate.toLowerCase() !== 'student'
                   ? candidate
@@ -378,7 +380,7 @@ export const SlotChatModal: React.FC<SlotChatModalProps> = ({
                   ? msg.profile.email.split('@')[0]
                   : isMe
                   ? 'You'
-                  : 'SRM Peer';
+                  : 'Member';
               const avatar = msg.profile?.avatar_url;
 
               return (

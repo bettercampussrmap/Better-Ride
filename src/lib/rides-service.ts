@@ -83,17 +83,24 @@ export function broadcastRideUpdate(): void {
   const supabase = getSupabase();
   if (!supabase) return;
   try {
-    const channel = supabase.channel('better_ride_realtime_sync');
-    channel.subscribe((status) => {
+    const tempChannel = supabase.channel(`broadcast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+    tempChannel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        channel.send({
+        tempChannel.send({
           type: 'broadcast',
           event: 'ride_updated',
           payload: { timestamp: Date.now() },
         });
+        setTimeout(() => {
+          try {
+            supabase.removeChannel(tempChannel);
+          } catch {}
+        }, 1000);
       }
     });
-  } catch {}
+  } catch (err) {
+    console.warn('broadcastRideUpdate notice:', err);
+  }
 }
 
 /**
@@ -111,14 +118,19 @@ export function broadcastMessageToSlot(slotId: string, message: Message): void {
   const supabase = getSupabase();
   if (!supabase) return;
   try {
-    const channel = supabase.channel(`slot_live_chat_${slotId}`);
-    channel.subscribe((status) => {
+    const tempChatChannel = supabase.channel(`chat_bcast_${slotId}_${Date.now()}`);
+    tempChatChannel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        channel.send({
+        tempChatChannel.send({
           type: 'broadcast',
           event: 'new_msg',
           payload: message,
         });
+        setTimeout(() => {
+          try {
+            supabase.removeChannel(tempChatChannel);
+          } catch {}
+        }, 1000);
       }
     });
   } catch {}
@@ -146,34 +158,58 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
         .order('departure_date', { ascending: true })
         .order('start_time', { ascending: true });
 
-      // Build profileMap from all registered users stored in time_slots
+      // Build profileMap from all registered users stored in Supabase profiles
       const profileMap = new Map<string, Profile>();
 
+      // Fetch profiles table directly: supports profiles.name & profiles.display_name
+      try {
+        const { data: profiles } = await supabase.from('profiles').select('*');
+        if (profiles) {
+          profiles.forEach((p: any) => {
+            const actualName =
+              (p.name && typeof p.name === 'string' && p.name.trim()) ||
+              (p.display_name && typeof p.display_name === 'string' && p.display_name.trim()) ||
+              '';
+            const normalizedProfile: Profile = {
+              id: p.id,
+              name: actualName || null,
+              display_name: actualName || null,
+              email: p.email || null,
+              avatar_url: p.avatar_url || null,
+              created_at: p.created_at || new Date().toISOString(),
+              updated_at: p.updated_at || new Date().toISOString(),
+            };
+            if (p.id) profileMap.set(p.id, normalizedProfile);
+            if (p.email) profileMap.set(p.email.toLowerCase().trim(), normalizedProfile);
+          });
+        }
+      } catch (err) {
+        console.warn('fetchAllRides profiles query notice:', err);
+      }
+
+      // Also merge any users stored in registration slots
       (rawSlotsData || []).forEach((s: any) => {
         if (s.destination?.startsWith('__better_ride_user__:')) {
           try {
             const rawJson = s.destination.replace('__better_ride_user__:', '');
             const parsed = JSON.parse(rawJson) as Profile;
             if (parsed) {
-              if (parsed.id) profileMap.set(parsed.id, parsed);
-              if (parsed.email) profileMap.set(parsed.email.toLowerCase().trim(), parsed);
+              const actualName = (parsed.name && parsed.name.trim()) || (parsed.display_name && parsed.display_name.trim()) || '';
+              const prof: Profile = {
+                id: parsed.id,
+                name: actualName || null,
+                display_name: actualName || null,
+                email: parsed.email || null,
+                avatar_url: parsed.avatar_url || null,
+                created_at: parsed.created_at || new Date().toISOString(),
+                updated_at: parsed.updated_at || new Date().toISOString(),
+              };
+              if (parsed.id) profileMap.set(parsed.id, prof);
+              if (parsed.email) profileMap.set(parsed.email.toLowerCase().trim(), prof);
             }
           } catch {}
         }
       });
-
-      // Try profiles table as well
-      try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name, email, avatar_url');
-        if (profiles) {
-          profiles.forEach((p: any) => {
-            if (p.id) profileMap.set(p.id, p);
-            if (p.email) profileMap.set(p.email.toLowerCase().trim(), p);
-          });
-        }
-      } catch {}
 
       // Check local users cache for friendly names
       let localUsers: Record<string, any> = {};
@@ -199,19 +235,18 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
       if (!slotsErr && slotsData) {
         const slotIds = slotsData.map((s) => s.id);
 
-        // 2. Fetch slot_members
+        // 2. Fetch slot_members (and ride_members if available)
         let membersData: any[] = [];
         if (slotIds.length > 0) {
           try {
             const { data: mData, error: mErr } = await supabase
               .from('slot_members')
-              .select('id, slot_id, user_id, joined_at, pickup_note, ride_pref')
+              .select('*')
               .in('slot_id', slotIds);
 
             if (!mErr && mData) {
               membersData = mData;
             } else {
-              // Try base columns if extra columns missing
               const { data: mDataBase } = await supabase
                 .from('slot_members')
                 .select('id, slot_id, user_id, joined_at')
@@ -221,6 +256,21 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
           } catch (e) {
             console.warn('Error fetching slot_members:', e);
           }
+
+          // Check ride_members if slot_members returned no rows or as alias
+          try {
+            const { data: rmData, error: rmErr } = await supabase
+              .from('ride_members')
+              .select('*')
+              .in('slot_id', slotIds);
+            if (!rmErr && rmData && rmData.length > 0) {
+              rmData.forEach((rm: any) => {
+                if (!membersData.some((m) => m.slot_id === rm.slot_id && m.user_id === rm.user_id)) {
+                  membersData.push(rm);
+                }
+              });
+            }
+          } catch {}
         }
 
         // Also check fallback members stored in time_slots (__better_ride_member__:)
@@ -229,7 +279,6 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             try {
               const parsed = JSON.parse(s.destination.replace('__better_ride_member__:', ''));
               if (parsed && parsed.slot_id && slotIds.includes(parsed.slot_id)) {
-                // Use a deterministic ID based on slot_id and user_id to avoid duplicates
                 const stableId = toValidUuid(`fallback-${parsed.slot_id}-${parsed.user_id}`);
                 const existing = membersData.find(
                   (m) => m.slot_id === parsed.slot_id && m.user_id === parsed.user_id
@@ -240,7 +289,6 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
                     existing.pickup_note = JSON.stringify({ name: parsed.name, avatar: parsed.avatar });
                   }
                 } else {
-                  // Only add if not already present
                   if (!membersData.some(m => m.id === stableId)) {
                     membersData.push({
                       id: stableId,
@@ -280,11 +328,18 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
                 (u: any) => u.id === m.user_id || (matchedProf?.email && u.email?.toLowerCase() === matchedProf.email.toLowerCase())
               ) as any;
 
-              const isCurrentUser = Boolean(safeCurrentUserId && m.user_id === safeCurrentUserId);
+              const isCurrentUser = Boolean(
+                (safeCurrentUserId && m.user_id === safeCurrentUserId) ||
+                (currentUserId && m.user_id === currentUserId)
+              );
 
+              // 2. User Name Bug fix: ride_members.user_id -> profiles.id -> profiles.name / display_name
               const candidateName =
+                matchedProf?.name ||
                 matchedProf?.display_name ||
+                matchedById?.name ||
                 matchedById?.display_name ||
+                matchedLocal?.name ||
                 matchedLocal?.display_name ||
                 embeddedName;
 
@@ -294,20 +349,20 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
                 candidateName.trim().toLowerCase() !== 'student' &&
                 candidateName.trim().toLowerCase() !== 'campus member';
 
-              // Fallback friendly name that is NEVER generic "Student"
-              const fallbackName = hasValidRealName
+              const memberActualName = hasValidRealName
                 ? candidateName.trim()
+                : isCurrentUser
+                ? 'You'
                 : matchedProf?.email
                 ? matchedProf.email.split('@')[0]
                 : matchedLocal?.email
                 ? matchedLocal.email.split('@')[0]
-                : isCurrentUser
-                ? 'You'
-                : 'SRM Peer';
+                : 'Member';
 
               const prof: Profile = {
                 id: m.user_id,
-                display_name: fallbackName,
+                name: memberActualName,
+                display_name: memberActualName,
                 email: matchedProf?.email || matchedLocal?.email || null,
                 avatar_url: embeddedAvatar || matchedProf?.avatar_url || matchedLocal?.avatar_url || null,
                 created_at: m.joined_at,
@@ -328,7 +383,8 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             });
 
           const isUserJoined = Boolean(
-            safeCurrentUserId && slotMembers.some((m) => m.user_id === safeCurrentUserId)
+            (safeCurrentUserId && slotMembers.some((m) => m.user_id === safeCurrentUserId)) ||
+            (currentUserId && slotMembers.some((m) => m.user_id === currentUserId))
           );
 
           return {
@@ -352,36 +408,29 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
     }
   }
 
-  // Merge supabaseRides and localRides: Supabase is authoritative when available
-  const localRides = loadLocalRides();
-  const rideMap = new Map<string, SlotWithDetails>();
+  // Supabase rides are authoritative when database is configured
+  let finalRides: SlotWithDetails[] = [];
 
   if (supabaseRides.length > 0) {
-    // Supabase rides are authoritative (reflects database deletions like leaving a ride)
-    supabaseRides.forEach((r) => rideMap.set(r.id, r));
-    // Include any local-only rides not yet in Supabase
-    localRides.forEach((lr) => {
-      if (!rideMap.has(lr.id)) {
-        rideMap.set(lr.id, lr);
-      }
-    });
+    finalRides = supabaseRides;
+    saveLocalRides(finalRides);
   } else {
-    localRides.forEach((r) => rideMap.set(r.id, r));
+    // Fallback to local persistent cache when offline
+    const localRides = loadLocalRides();
+    finalRides = localRides.map((slot) => {
+      const isUserJoined = Boolean(
+        (safeCurrentUserId && slot.members.some((m) => m.user_id === safeCurrentUserId)) ||
+        (currentUserId && slot.members.some((m) => m.user_id === currentUserId))
+      );
+      return {
+        ...slot,
+        isUserJoined,
+        memberCount: slot.members.length,
+      };
+    });
   }
 
-  const mergedRides = Array.from(rideMap.values()).map((slot) => {
-    const isUserJoined = Boolean(
-      safeCurrentUserId && slot.members.some((m) => m.user_id === safeCurrentUserId)
-    );
-    return {
-      ...slot,
-      isUserJoined,
-      memberCount: slot.members.length,
-    };
-  });
-
-  saveLocalRides(mergedRides);
-  return mergedRides;
+  return finalRides;
 }
 
 /**
@@ -416,17 +465,34 @@ export async function createAndJoinRide(params: {
 
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
   const validTargetSize = Math.min(12, Math.max(2, targetSize));
-
-  const memberMetadata = JSON.stringify({
-    name: userName,
-    avatar: userAvatar || null,
-  });
+  const effectiveName = (userName && userName.trim() && userName.trim().toLowerCase() !== 'student') ? userName.trim() : 'Student';
 
   const supabase = getSupabase();
   if (supabase) {
     try {
+      // 1. Ensure joining user's profile is saved in public.profiles so other clients see their real name
+      try {
+        const { error: pErr1 } = await supabase.from('profiles').upsert({
+          id: validUserId,
+          name: effectiveName,
+          display_name: effectiveName,
+          avatar_url: userAvatar || null,
+          updated_at: new Date().toISOString(),
+        });
+        if (pErr1) {
+          await supabase.from('profiles').upsert({
+            id: validUserId,
+            display_name: effectiveName,
+            avatar_url: userAvatar || null,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.warn('Profile sync notice during join:', err);
+      }
+
       let slotId: string = targetSlotId || '';
-      let slotRecord: any;
+      let slotRecord: any = null;
 
       if (slotId && isValidUuid(slotId)) {
         const { data: byId } = await supabase
@@ -464,8 +530,6 @@ export async function createAndJoinRide(params: {
               departure_date: departureDate,
               start_time: startTime,
               end_time: endTime,
-              target_size: validTargetSize,
-              ride_type: ridePref,
             })
             .select()
             .maybeSingle();
@@ -484,58 +548,63 @@ export async function createAndJoinRide(params: {
       }
 
       if (isValidUuid(slotId) && isValidUuid(validUserId)) {
-        // Check if user is already in slot_members for this slot
-        const { data: existingMember } = await supabase
+        // Enforce capacity check on the group: count existing members in database!
+        const { data: currentMembers } = await supabase
           .from('slot_members')
-          .select('id')
-          .eq('slot_id', slotId)
-          .eq('user_id', validUserId)
-          .maybeSingle();
+          .select('id, user_id')
+          .eq('slot_id', slotId);
 
-        if (!existingMember) {
+        const currentCount = currentMembers?.length || 0;
+        const alreadyIn = currentMembers?.some((m) => m.user_id === validUserId);
+
+        if (!alreadyIn) {
+          const maxCapacity = slotRecord?.target_size || validTargetSize;
+          if (currentCount >= maxCapacity) {
+            throw new Error(`This ride group is already full (${currentCount}/${maxCapacity} seats filled). Please join another group or start a new one.`);
+          }
+
+          const memberMetadata = JSON.stringify({
+            name: effectiveName,
+            avatar: userAvatar || null,
+          });
+
+          // Insert member into slot_members
           const { error: memberInsertErr } = await supabase.from('slot_members').insert({
             slot_id: slotId,
             user_id: validUserId,
             pickup_note: memberMetadata,
             ride_pref: ridePref,
+            target_size: validTargetSize,
           });
 
           if (memberInsertErr) {
-            console.warn('Supabase slot_members insert notice:', memberInsertErr);
             // Retry with base columns
-            const { error: baseErr } = await supabase.from('slot_members').insert({
+            await supabase.from('slot_members').insert({
               slot_id: slotId,
               user_id: validUserId,
             });
           }
 
-          // Always persist member name and avatar so all devices and clients know real student name
+          // Also try inserting into ride_members view/table if available
           try {
-            await supabase.from('time_slots').insert({
-              destination: `__better_ride_member__:${JSON.stringify({
-                slot_id: slotId,
-                user_id: validUserId,
-                name: userName,
-                avatar: userAvatar || null,
-                joined_at: new Date().toISOString(),
-              })}`,
-              departure_date: '1970-01-03',
-              start_time: '00:00:00',
-              end_time: '00:00:01',
+            await supabase.from('ride_members').insert({
+              slot_id: slotId,
+              user_id: validUserId,
             });
           } catch {}
         }
       }
 
-      // Broadcast ride update so all other devices update in real time
+      // Broadcast ride update so all other devices update immediately via Realtime
       broadcastRideUpdate();
 
       // Re-fetch all rides from Supabase so all client states are updated
       const all = await fetchAllRides(validUserId);
       const updated = all.find((s) => s.id === slotId);
       if (updated) return updated;
-    } catch (err) {
-      console.warn('Supabase createAndJoinRide exception, using local store fallback:', err);
+    } catch (err: any) {
+      console.warn('Supabase createAndJoinRide exception:', err);
+      throw err;
     }
   }
 
@@ -558,7 +627,8 @@ export async function createAndJoinRide(params: {
     pickup_point: 'SRM AP Gate 3',
     profile: {
       id: validUserId,
-      display_name: userName || 'You',
+      name: effectiveName,
+      display_name: effectiveName,
       email: null,
       avatar_url: userAvatar || null,
       created_at: new Date().toISOString(),
@@ -574,6 +644,8 @@ export async function createAndJoinRide(params: {
         existing.members.push(newMember);
         existing.memberCount = existing.members.length;
         existing.isUserJoined = true;
+      } else {
+        throw new Error('This ride group is already full.');
       }
     }
     saveLocalRides(localRides);
@@ -622,32 +694,31 @@ export async function leaveRideInSupabase(
 
   if (supabase) {
     try {
-      // 1. Delete from slot_members matching both original and valid UUID formats
+      // 1. Delete from slot_members matching slot_id and user_id
       await supabase
         .from('slot_members')
         .delete()
-        .or(`slot_id.eq.${slotId},slot_id.eq.${validSlotId}`)
-        .or(`user_id.eq.${userId},user_id.eq.${validUserId}`);
+        .eq('slot_id', validSlotId)
+        .eq('user_id', validUserId);
 
-      // 2. If virtual slot or destination/date/time provided, find matching time_slots in Supabase and delete their memberships too
-      if (slotId.startsWith('virtual-') || (destination && departureDate && startTime)) {
-        let query = supabase.from('time_slots').select('id');
-        if (destination) query = query.eq('destination', destination);
-        if (departureDate) query = query.eq('departure_date', departureDate);
-        if (startTime) query = query.eq('start_time', startTime);
-
-        const { data: matchingSlots } = await query;
-        if (matchingSlots && matchingSlots.length > 0) {
-          const matchingIds = matchingSlots.map((s) => s.id);
-          await supabase
-            .from('slot_members')
-            .delete()
-            .in('slot_id', matchingIds)
-            .or(`user_id.eq.${userId},user_id.eq.${validUserId}`);
-        }
+      if (validSlotId !== slotId || validUserId !== userId) {
+        await supabase
+          .from('slot_members')
+          .delete()
+          .eq('slot_id', slotId)
+          .eq('user_id', userId);
       }
 
-      // 3. Clean up any fallback membership in time_slots
+      // Also delete from ride_members if present
+      try {
+        await supabase
+          .from('ride_members')
+          .delete()
+          .eq('slot_id', validSlotId)
+          .eq('user_id', validUserId);
+      } catch {}
+
+      // Clean up any metadata in time_slots
       const { data: memberSlots } = await supabase
         .from('time_slots')
         .select('id, destination')
@@ -659,8 +730,8 @@ export async function leaveRideInSupabase(
           try {
             const parsed = JSON.parse(ms.destination.replace('__better_ride_member__:', ''));
             if (
-              (parsed.slot_id === slotId || parsed.slot_id === validSlotId || parsed.slot_id === toValidUuid(slotId)) &&
-              (parsed.user_id === userId || parsed.user_id === validUserId || parsed.user_id === toValidUuid(userId))
+              (parsed.slot_id === slotId || parsed.slot_id === validSlotId) &&
+              (parsed.user_id === userId || parsed.user_id === validUserId)
             ) {
               await supabase.from('time_slots').delete().eq('id', ms.id);
             }
@@ -672,58 +743,18 @@ export async function leaveRideInSupabase(
     }
   }
 
-  // 4. Update local store
+  // Update local store
   const localRides = loadLocalRides();
   const ride = localRides.find((s) => s.id === slotId || s.id === validSlotId);
   if (ride) {
     ride.members = ride.members.filter(
       (m) =>
         m.user_id !== userId &&
-        m.user_id !== validUserId &&
-        m.slot_id !== slotId &&
-        m.slot_id !== validSlotId
+        m.user_id !== validUserId
     );
     ride.memberCount = ride.members.length;
     ride.isUserJoined = false;
     saveLocalRides(localRides);
-  }
-
-  // 5. Remove from all local memberships storage keys & cache
-  if (typeof window !== 'undefined') {
-    try {
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (key && (key.startsWith('local_') || key.includes('better_ride') || key.includes('slot'))) {
-          const raw = localStorage.getItem(key);
-          if (raw && (raw.includes(slotId) || raw.includes(validSlotId) || raw.includes(userId))) {
-            try {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) {
-                const filtered = parsed.filter(
-                  (m: any) =>
-                    !(
-                      (m.slot_id === slotId || m.slot_id === validSlotId) &&
-                      (m.user_id === userId || m.user_id === validUserId)
-                    )
-                );
-                localStorage.setItem(key, JSON.stringify(filtered));
-              } else if (typeof parsed === 'object' && parsed !== null) {
-                if (Array.isArray(parsed.members)) {
-                  parsed.members = parsed.members.filter(
-                    (m: any) =>
-                      m.user_id !== userId &&
-                      m.user_id !== validUserId
-                  );
-                  parsed.memberCount = parsed.members.length;
-                  parsed.isUserJoined = false;
-                  localStorage.setItem(key, JSON.stringify(parsed));
-                }
-              }
-            } catch {}
-          }
-        }
-      }
-    } catch {}
   }
 
   broadcastRideUpdate();
@@ -752,26 +783,50 @@ export function subscribeToRideUpdates(onUpdate: () => void): () => void {
 
   if (supabase) {
     try {
+      // Use unique channel per subscriber to avoid topic collision
+      const channelId = `realtime_rides_${Math.random().toString(36).substring(2, 9)}`;
       channel = supabase
-        .channel('better_ride_realtime_sync')
+        .channel(channelId)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'slot_members' },
-          () => {
+          (payload: any) => {
+            console.log('[Realtime] slot_members event:', payload.eventType);
+            onUpdate();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'ride_members' },
+          (payload: any) => {
+            console.log('[Realtime] ride_members event:', payload.eventType);
             onUpdate();
           }
         )
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'time_slots' },
-          () => {
+          (payload: any) => {
+            console.log('[Realtime] time_slots event:', payload.eventType);
+            onUpdate();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles' },
+          (payload: any) => {
+            console.log('[Realtime] profiles event:', payload.eventType);
             onUpdate();
           }
         )
         .on('broadcast', { event: 'ride_updated' }, () => {
           onUpdate();
         })
-        .subscribe();
+        .subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[Realtime] Subscribed to ride updates channel successfully');
+          }
+        });
     } catch (err) {
       console.warn('Realtime subscription error:', err);
     }
@@ -800,42 +855,35 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
 
   if (supabase) {
     try {
-      const profileMap = new Map<string, any>();
+      const profileMap = new Map<string, Profile>();
 
-      // 1. Parse user registration slots from time_slots to get real names
+      // 1. Fetch profiles table: messages.user_id -> profiles.id -> profiles.name / display_name
       try {
-        const { data: userSlots } = await supabase
-          .from('time_slots')
-          .select('id, destination')
-          .eq('departure_date', '1970-01-01')
-          .like('destination', '__better_ride_user__:%');
-
-        if (userSlots) {
-          userSlots.forEach((s: any) => {
-            try {
-              const parsed = JSON.parse(s.destination.replace('__better_ride_user__:', ''));
-              if (parsed) {
-                if (parsed.id) profileMap.set(parsed.id, parsed);
-                if (parsed.email) profileMap.set(parsed.email.toLowerCase().trim(), parsed);
-              }
-            } catch {}
-          });
-        }
-      } catch {}
-
-      // 2. Profiles table
-      try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, display_name, email, avatar_url');
+        const { data: profiles } = await supabase.from('profiles').select('*');
         if (profiles) {
           profiles.forEach((p: any) => {
-            if (p.id) profileMap.set(p.id, p);
-            if (p.email) profileMap.set(p.email.toLowerCase().trim(), p);
+            const actualName =
+              (p.name && typeof p.name === 'string' && p.name.trim()) ||
+              (p.display_name && typeof p.display_name === 'string' && p.display_name.trim()) ||
+              '';
+            const normalizedProfile: Profile = {
+              id: p.id,
+              name: actualName || null,
+              display_name: actualName || null,
+              email: p.email || null,
+              avatar_url: p.avatar_url || null,
+              created_at: p.created_at || new Date().toISOString(),
+              updated_at: p.updated_at || new Date().toISOString(),
+            };
+            if (p.id) profileMap.set(p.id, normalizedProfile);
+            if (p.email) profileMap.set(p.email.toLowerCase().trim(), normalizedProfile);
           });
         }
-      } catch {}
+      } catch (err) {
+        console.warn('fetchMessages profiles notice:', err);
+      }
 
+      // Check local users cache for friendly names
       let localUsers: Record<string, any> = {};
       let usersById: Record<string, any> = {};
       if (typeof window !== 'undefined') {
@@ -847,7 +895,7 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         } catch {}
       }
 
-      // 3. Fetch from messages table
+      // 2. Fetch from messages table
       const { data: msgTableData, error: msgTableErr } = await supabase
         .from('messages')
         .select('*')
@@ -855,34 +903,6 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         .order('created_at', { ascending: true });
 
       const allRawMsgs: any[] = msgTableData || [];
-
-      // 4. Fetch any fallback messages stored in time_slots
-      try {
-        const { data: fallbackMsgSlots } = await supabase
-          .from('time_slots')
-          .select('id, destination, created_at')
-          .eq('departure_date', '1970-01-02')
-          .like('destination', '__better_ride_msg__:%');
-
-        if (fallbackMsgSlots) {
-          fallbackMsgSlots.forEach((fs: any) => {
-            try {
-              const parsed = JSON.parse(fs.destination.replace('__better_ride_msg__:', ''));
-              if (parsed && parsed.slot_id === slotId) {
-                if (!allRawMsgs.some((m) => m.id === parsed.id)) {
-                  allRawMsgs.push({
-                    id: parsed.id,
-                    slot_id: parsed.slot_id,
-                    user_id: parsed.user_id,
-                    content: typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content),
-                    created_at: parsed.created_at || fs.created_at,
-                  });
-                }
-              }
-            } catch {}
-          });
-        }
-      } catch {}
 
       supabaseMessages = allRawMsgs.map((d: any) => {
         let text = d.content;
@@ -907,8 +927,11 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
         ) as any;
 
         const candidateAuthorName =
+          matchedProf?.name ||
           matchedProf?.display_name ||
+          matchedById?.name ||
           matchedById?.display_name ||
+          matchedLocal?.name ||
           matchedLocal?.display_name ||
           senderNameFromContent;
 
@@ -924,7 +947,7 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
           ? matchedProf.email.split('@')[0]
           : matchedLocal?.email
           ? matchedLocal.email.split('@')[0]
-          : 'SRM Peer';
+          : 'Member';
 
         return {
           id: d.id,
@@ -934,6 +957,7 @@ export async function fetchMessagesForSlot(slotId: string): Promise<Message[]> {
           created_at: d.created_at,
           profile: {
             id: effectiveUserId,
+            name: authorName,
             display_name: authorName,
             email: matchedProf?.email || matchedLocal?.email || null,
             avatar_url: matchedProf?.avatar_url || matchedLocal?.avatar_url || null,
@@ -984,12 +1008,25 @@ export async function postMessageToSlot(
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
   const senderName = userName || 'Student';
 
-  // Rich JSON payload preserving real sender name and ID across all devices
-  const payload = JSON.stringify({
-    text: trimmed,
-    senderName: senderName,
-    senderId: validUserId,
-  });
+  // Ensure profile is in profiles table
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { error: pErr } = await supabase.from('profiles').upsert({
+        id: validUserId,
+        name: senderName,
+        display_name: senderName,
+        updated_at: new Date().toISOString(),
+      });
+      if (pErr) {
+        await supabase.from('profiles').upsert({
+          id: validUserId,
+          display_name: senderName,
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } catch {}
+  }
 
   const newMsg: Message = {
     id: `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -999,6 +1036,7 @@ export async function postMessageToSlot(
     created_at: new Date().toISOString(),
     profile: {
       id: validUserId,
+      name: senderName,
       display_name: senderName,
       email: null,
       avatar_url: null,
@@ -1007,74 +1045,37 @@ export async function postMessageToSlot(
     },
   };
 
-  // 1. Broadcast immediately so active users see it in sub-50ms!
+  // Broadcast immediately so active users see it in sub-50ms!
   broadcastMessageToSlot(slotId, newMsg);
 
-  // 2. Always save to local cache
+  // Always save to local cache
   const localMsgs = loadLocalMessages();
   if (!localMsgs[slotId]) localMsgs[slotId] = [];
   localMsgs[slotId].push(newMsg);
   saveLocalMessages(localMsgs);
 
-  // 3. Persist to Supabase
-  const supabase = getSupabase();
+  // Persist to Supabase
   if (supabase && isValidUuid(slotId)) {
     try {
-      let messagePersisted = false;
-
-      // 1. First attempt: insert with validUserId and rich payload
       const { data, error } = await supabase.from('messages').insert({
         slot_id: slotId,
         user_id: validUserId,
-        content: payload,
+        content: trimmed,
       }).select('*').maybeSingle();
 
       if (!error && data) {
         newMsg.id = data.id;
         newMsg.created_at = data.created_at;
-        messagePersisted = true;
-      } else {
-        // 2. Second attempt: insert with SHARED_SYSTEM_AUTH_USER for valid foreign key
-        const resFallback = await supabase.from('messages').insert({
-          slot_id: slotId,
-          user_id: SHARED_SYSTEM_AUTH_USER,
-          content: payload,
-        }).select('*').maybeSingle();
-
-        if (!resFallback.error && resFallback.data) {
-          newMsg.id = resFallback.data.id;
-          newMsg.created_at = resFallback.data.created_at;
-          messagePersisted = true;
-        }
       }
 
-      // 3. Always also persist to time_slots fallback table so realtime listeners on time_slots receive the update
-      try {
-        await supabase.from('time_slots').insert({
-          destination: `__better_ride_msg__:${JSON.stringify({ ...newMsg, slot_id: slotId, content: payload })}`,
-          departure_date: '1970-01-02',
-          start_time: '00:00:00',
-          end_time: '00:00:01',
-        });
-      } catch {}
-
-      // Re-broadcast with confirmed message ID and created_at
       broadcastMessageToSlot(slotId, newMsg);
-
       return newMsg;
     } catch (e) {
       console.warn('Supabase postMessageToSlot exception:', e);
-      try {
-        await supabase.from('time_slots').insert({
-          destination: `__better_ride_msg__:${JSON.stringify({ ...newMsg, slot_id: slotId, content: payload })}`,
-          departure_date: '1970-01-02',
-          start_time: '00:00:00',
-          end_time: '00:00:01',
-        });
-      } catch {}
       broadcastMessageToSlot(slotId, newMsg);
     }
   }
 
   return newMsg;
 }
+

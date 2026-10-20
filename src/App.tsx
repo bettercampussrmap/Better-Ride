@@ -63,22 +63,49 @@ function AppContent() {
         .maybeSingle();
 
       if (!error && data) {
-        setProfile(data as Profile);
+        const resolvedName = (data as any).name || (data as any).display_name || displayName;
+        setProfile({
+          ...(data as Profile),
+          name: resolvedName,
+          display_name: resolvedName,
+        });
       } else {
+        const upsertPayload: any = {
+          id: safeId,
+          name: displayName,
+          display_name: displayName,
+          email: authUser.email,
+          avatar_url: avatarUrl,
+          updated_at: new Date().toISOString(),
+        };
+
+        let newProfileData: any = null;
         const { data: newProfile, error: upsertErr } = await supabase
           .from('profiles')
-          .upsert({
-            id: safeId,
-            display_name: displayName,
-            email: authUser.email,
-            avatar_url: avatarUrl,
-            updated_at: new Date().toISOString(),
-          })
+          .upsert(upsertPayload)
           .select()
           .maybeSingle();
 
-        if (!upsertErr && newProfile) {
-          setProfile(newProfile as Profile);
+        if (upsertErr) {
+          // Retry without 'name' column if not yet present
+          delete upsertPayload.name;
+          const { data: fallbackRes } = await supabase
+            .from('profiles')
+            .upsert(upsertPayload)
+            .select()
+            .maybeSingle();
+          newProfileData = fallbackRes;
+        } else {
+          newProfileData = newProfile;
+        }
+
+        if (newProfileData) {
+          const resolvedName = newProfileData.name || newProfileData.display_name || displayName;
+          setProfile({
+            ...(newProfileData as Profile),
+            name: resolvedName,
+            display_name: resolvedName,
+          });
         } else {
           setProfile(fallbackProfile);
         }
