@@ -352,37 +352,22 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
     }
   }
 
-  // Merge supabaseRides and localRides so local/offline-created rides are never lost
+  // Merge supabaseRides and localRides: Supabase is authoritative when available
   const localRides = loadLocalRides();
   const rideMap = new Map<string, SlotWithDetails>();
 
-  // Add local rides first so local creations are preserved
-  localRides.forEach((r) => rideMap.set(r.id, r));
-
-  // Add/override with Supabase rides
-  supabaseRides.forEach((r) => {
-    const existing = rideMap.get(r.id);
-    if (existing) {
-      const memberMap = new Map<string, any>();
-      existing.members?.forEach((m) => memberMap.set(m.user_id || m.id, m));
-      r.members?.forEach((m) => {
-        const prev = memberMap.get(m.user_id || m.id);
-        // Preserve richer profile display name if previous has it
-        if (prev?.profile?.display_name && prev.profile.display_name !== 'Student' && prev.profile.display_name !== 'Campus Peer') {
-          m.profile = { ...m.profile, ...prev.profile };
-        }
-        memberMap.set(m.user_id || m.id, m);
-      });
-      rideMap.set(r.id, {
-        ...r,
-        members: Array.from(memberMap.values()),
-        memberCount: memberMap.size,
-        isUserJoined: existing.isUserJoined || r.isUserJoined,
-      });
-    } else {
-      rideMap.set(r.id, r);
-    }
-  });
+  if (supabaseRides.length > 0) {
+    // Supabase rides are authoritative (reflects database deletions like leaving a ride)
+    supabaseRides.forEach((r) => rideMap.set(r.id, r));
+    // Include any local-only rides not yet in Supabase
+    localRides.forEach((lr) => {
+      if (!rideMap.has(lr.id)) {
+        rideMap.set(lr.id, lr);
+      }
+    });
+  } else {
+    localRides.forEach((r) => rideMap.set(r.id, r));
+  }
 
   const mergedRides = Array.from(rideMap.values()).map((slot) => {
     const isUserJoined = Boolean(
@@ -624,19 +609,45 @@ export async function createAndJoinRide(params: {
 /**
  * Leave a ride in Supabase (with local fallback)
  */
-export async function leaveRideInSupabase(slotId: string, userId: string): Promise<boolean> {
+export async function leaveRideInSupabase(
+  slotId: string,
+  userId: string,
+  destination?: string,
+  departureDate?: string,
+  startTime?: string
+): Promise<boolean> {
+  const validSlotId = isValidUuid(slotId) ? slotId : toValidUuid(slotId);
   const validUserId = isValidUuid(userId) ? userId : toValidUuid(userId);
   const supabase = getSupabase();
 
   if (supabase) {
     try {
+      // 1. Delete from slot_members matching both original and valid UUID formats
       await supabase
         .from('slot_members')
         .delete()
-        .eq('slot_id', slotId)
-        .in('user_id', [validUserId, userId]);
+        .or(`slot_id.eq.${slotId},slot_id.eq.${validSlotId}`)
+        .or(`user_id.eq.${userId},user_id.eq.${validUserId}`);
 
-      // Clean up any fallback membership in time_slots
+      // 2. If virtual slot or destination/date/time provided, find matching time_slots in Supabase and delete their memberships too
+      if (slotId.startsWith('virtual-') || (destination && departureDate && startTime)) {
+        let query = supabase.from('time_slots').select('id');
+        if (destination) query = query.eq('destination', destination);
+        if (departureDate) query = query.eq('departure_date', departureDate);
+        if (startTime) query = query.eq('start_time', startTime);
+
+        const { data: matchingSlots } = await query;
+        if (matchingSlots && matchingSlots.length > 0) {
+          const matchingIds = matchingSlots.map((s) => s.id);
+          await supabase
+            .from('slot_members')
+            .delete()
+            .in('slot_id', matchingIds)
+            .or(`user_id.eq.${userId},user_id.eq.${validUserId}`);
+        }
+      }
+
+      // 3. Clean up any fallback membership in time_slots
       const { data: memberSlots } = await supabase
         .from('time_slots')
         .select('id, destination')
@@ -647,7 +658,10 @@ export async function leaveRideInSupabase(slotId: string, userId: string): Promi
         for (const ms of memberSlots) {
           try {
             const parsed = JSON.parse(ms.destination.replace('__better_ride_member__:', ''));
-            if (parsed.slot_id === slotId && (parsed.user_id === validUserId || parsed.user_id === userId)) {
+            if (
+              (parsed.slot_id === slotId || parsed.slot_id === validSlotId || parsed.slot_id === toValidUuid(slotId)) &&
+              (parsed.user_id === userId || parsed.user_id === validUserId || parsed.user_id === toValidUuid(userId))
+            ) {
               await supabase.from('time_slots').delete().eq('id', ms.id);
             }
           } catch {}
@@ -658,14 +672,58 @@ export async function leaveRideInSupabase(slotId: string, userId: string): Promi
     }
   }
 
-  // Update local store as well
+  // 4. Update local store
   const localRides = loadLocalRides();
-  const ride = localRides.find((s) => s.id === slotId);
+  const ride = localRides.find((s) => s.id === slotId || s.id === validSlotId);
   if (ride) {
-    ride.members = ride.members.filter((m) => m.user_id !== validUserId && m.user_id !== userId && m.user_id !== userId);
+    ride.members = ride.members.filter(
+      (m) =>
+        m.user_id !== userId &&
+        m.user_id !== validUserId &&
+        m.slot_id !== slotId &&
+        m.slot_id !== validSlotId
+    );
     ride.memberCount = ride.members.length;
     ride.isUserJoined = false;
     saveLocalRides(localRides);
+  }
+
+  // 5. Remove from all local memberships storage keys & cache
+  if (typeof window !== 'undefined') {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('local_') || key.includes('better_ride') || key.includes('slot'))) {
+          const raw = localStorage.getItem(key);
+          if (raw && (raw.includes(slotId) || raw.includes(validSlotId) || raw.includes(userId))) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const filtered = parsed.filter(
+                  (m: any) =>
+                    !(
+                      (m.slot_id === slotId || m.slot_id === validSlotId) &&
+                      (m.user_id === userId || m.user_id === validUserId)
+                    )
+                );
+                localStorage.setItem(key, JSON.stringify(filtered));
+              } else if (typeof parsed === 'object' && parsed !== null) {
+                if (Array.isArray(parsed.members)) {
+                  parsed.members = parsed.members.filter(
+                    (m: any) =>
+                      m.user_id !== userId &&
+                      m.user_id !== validUserId
+                  );
+                  parsed.memberCount = parsed.members.length;
+                  parsed.isUserJoined = false;
+                  localStorage.setItem(key, JSON.stringify(parsed));
+                }
+              }
+            } catch {}
+          }
+        }
+      }
+    } catch {}
   }
 
   broadcastRideUpdate();

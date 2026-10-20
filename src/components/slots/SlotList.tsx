@@ -8,6 +8,7 @@ import { JoinGroupModal } from './JoinGroupModal';
 import { useToast } from '../ui/Toast';
 import { Clock, RefreshCw, Navigation, ArrowLeft, MessageSquare, Sparkles } from 'lucide-react';
 import { toValidUuid, isValidUuid } from '../../lib/uuid-utils';
+import { leaveRideInSupabase } from '../../lib/rides-service';
 
 interface SlotListProps {
   selectedDestination: string;
@@ -416,7 +417,7 @@ export const SlotList: React.FC<SlotListProps> = ({
     setActionLoadingSlotId(slot.id);
     const safeUid = sanitizedCurrentUserId;
 
-    // 1. Immediately remove from local state & localStorage regardless of ID format
+    // 1. Immediately remove from local state & localStorage
     const updatedMembers = memberships.filter(
       (m) => !(m.slot_id === slot.id && (m.user_id === safeUid || m.user_id === currentUserId))
     );
@@ -429,37 +430,12 @@ export const SlotList: React.FC<SlotListProps> = ({
       setActiveChatSlot(null);
     }
 
-    // 2. If slot.id is NOT a valid UUID (e.g. legacy local-slot-*, virtual-*),
-    // NEVER query Supabase with it because Postgres will throw: invalid input syntax for type uuid!
-    if (!isValidUuid(slot.id) || !isSupabaseConfigured()) {
-      showToast('info', 'Left time slot', 'You have been removed from this departure group.');
-      setActionLoadingSlotId(null);
-      return;
-    }
-
-    // 3. If slot.id is a valid UUID, delete from Supabase database
-    const supabase = getSupabase();
-    if (!supabase) {
-      showToast('info', 'Left time slot', 'You have been removed from this departure group.');
-      setActionLoadingSlotId(null);
-      return;
-    }
-
     try {
-      const { error: leaveErr } = await supabase
-        .from('slot_members')
-        .delete()
-        .eq('slot_id', slot.id)
-        .eq('user_id', safeUid);
-
-      if (leaveErr) {
-        console.warn('Supabase leave error, removed locally:', leaveErr);
-      } else {
-        await fetchSlotData();
-      }
+      await leaveRideInSupabase(slot.id, currentUserId, slot.destination, slot.departure_date, slot.start_time);
+      await fetchSlotData();
       showToast('info', 'Left time slot', 'You have been removed from this departure group.');
     } catch (err: any) {
-      console.warn('Leave catch, removed locally:', err);
+      console.warn('Leave slot error:', err);
       showToast('info', 'Left time slot', 'You have been removed from this departure group.');
     } finally {
       setActionLoadingSlotId(null);

@@ -336,7 +336,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleLeaveRide = async () => {
     if (!selectedRide) return;
-    await leaveRideInSupabase(selectedRide.id, currentUserId);
+    await leaveRideInSupabase(
+      selectedRide.id,
+      currentUserId,
+      selectedRide.destination,
+      selectedRide.departure_date,
+      selectedRide.start_time
+    );
     await loadRides();
     setSelectedRide(null);
     setFlowScreen('home_main');
