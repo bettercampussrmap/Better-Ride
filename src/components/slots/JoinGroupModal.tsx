@@ -157,38 +157,75 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({
             </div>
           </div>
 
-          {/* Number of People Selection: 2, 4, 6, 8, max 12 */}
+          {/* Number of People Selection: 2 to 12 */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-[11px] font-bold text-[#09090B]">
                 Number of People
               </label>
-              <span className="text-[10px] font-semibold text-[#71717A]">
-                Target: {targetSize} seats (Max 12)
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-[#09090B] bg-[#F4F4F5] px-2 py-0.5 rounded-full border border-[#E4E4E7]">
+                  {targetSize} Seats
+                </span>
+                <span className="text-[9px] text-[#71717A]">(Max 12)</span>
+              </div>
             </div>
-            <div className="grid grid-cols-5 gap-1">
-              {[2, 4, 6, 8, 12].map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => setTargetSize(size)}
-                  className={`py-1.5 px-1 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer ${
-                    targetSize === size
-                      ? 'bg-[#09090B] text-white border-[#09090B] shadow-2xs'
-                      : 'bg-[#F4F4F5] text-[#52525B] border-transparent hover:border-[#E4E4E7]'
-                  }`}
-                >
-                  <div className="text-[11px]">{size}</div>
-                  <div
-                    className={`text-[8px] font-medium ${
-                      targetSize === size ? 'text-white/80' : 'text-[#71717A]'
+
+            {/* Stepper + Presets */}
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-6 gap-1">
+                {[2, 3, 4, 6, 8, 12].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setTargetSize(size)}
+                    className={`py-1.5 px-0.5 rounded-lg text-xs font-bold border transition-all text-center cursor-pointer ${
+                      targetSize === size
+                        ? 'bg-[#09090B] text-white border-[#09090B] shadow-2xs'
+                        : 'bg-[#F4F4F5] text-[#52525B] border-transparent hover:border-[#E4E4E7]'
                     }`}
                   >
-                    {size === 12 ? 'Max' : 'Seats'}
-                  </div>
-                </button>
-              ))}
+                    <div className="text-[11px]">{size}</div>
+                    <div
+                      className={`text-[8px] font-medium ${
+                        targetSize === size ? 'text-white/80' : 'text-[#71717A]'
+                      }`}
+                    >
+                      {size === 12 ? 'Max' : 'Seats'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Fine-tune stepper */}
+              <div className="flex items-center justify-between bg-[#F4F4F5] rounded-lg px-2.5 py-1 border border-[#E4E4E7]/60">
+                <span className="text-[10px] font-medium text-[#71717A]">
+                  Adjust exact capacity:
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetSize((prev) => Math.max(2, prev - 1))}
+                    disabled={targetSize <= 2}
+                    className="w-6 h-6 rounded bg-white border border-[#E4E4E7] flex items-center justify-center font-bold text-xs text-[#09090B] hover:bg-gray-100 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                    aria-label="Decrease seats"
+                  >
+                    -
+                  </button>
+                  <span className="w-5 text-center font-bold text-xs text-[#09090B]">
+                    {targetSize}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setTargetSize((prev) => Math.min(12, prev + 1))}
+                    disabled={targetSize >= 12}
+                    className="w-6 h-6 rounded bg-white border border-[#E4E4E7] flex items-center justify-center font-bold text-xs text-[#09090B] hover:bg-gray-100 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-2xs"
+                    aria-label="Increase seats"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 

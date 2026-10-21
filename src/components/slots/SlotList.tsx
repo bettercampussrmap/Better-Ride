@@ -329,7 +329,9 @@ export const SlotList: React.FC<SlotListProps> = ({
           realSlotId = existingSlot.id;
         } else {
           // 2. Insert slot
-          const { data: newSlot, error: createSlotErr } = await supabase
+          let newSlot: any = null;
+          let createSlotErr: any = null;
+          const ins1 = await supabase
             .from('time_slots')
             .insert({
               destination: selectedDestination,
@@ -340,6 +342,23 @@ export const SlotList: React.FC<SlotListProps> = ({
             })
             .select()
             .single();
+
+          if (ins1.error) {
+            const ins2 = await supabase
+              .from('time_slots')
+              .insert({
+                destination: selectedDestination,
+                departure_date: slot.departure_date,
+                start_time: slot.start_time,
+                end_time: slot.end_time,
+              })
+              .select()
+              .single();
+            newSlot = ins2.data;
+            createSlotErr = ins2.error;
+          } else {
+            newSlot = ins1.data;
+          }
 
           if (createSlotErr) {
             // Check again if inserted in parallel
@@ -360,6 +379,18 @@ export const SlotList: React.FC<SlotListProps> = ({
             }
           } else if (newSlot) {
             realSlotId = newSlot.id;
+            try {
+              await supabase.from('time_slots').insert({
+                destination: `__better_ride_slot_meta__:${JSON.stringify({
+                  slot_id: realSlotId,
+                  target_size: options.targetSize,
+                  ride_type: 'auto',
+                })}`,
+                departure_date: '1970-01-03',
+                start_time: '00:00:00',
+                end_time: '00:00:01',
+              });
+            } catch {}
           }
         }
       }

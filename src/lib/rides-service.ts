@@ -223,6 +223,32 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
         } catch {}
       }
 
+      // 1.5 Extract slot metadata (target_size, ride_type, etc.) synced across Supabase
+      const slotMetaMap = new Map<string, { target_size?: number; ride_type?: string }>();
+      (rawSlotsData || []).forEach((s: any) => {
+        if (s.destination?.startsWith('__better_ride_slot_meta__:')) {
+          try {
+            const rawJson = s.destination.replace('__better_ride_slot_meta__:', '');
+            const parsed = JSON.parse(rawJson);
+            if (parsed && parsed.slot_id) {
+              const sz = parsed.target_size ? Number(parsed.target_size) : undefined;
+              slotMetaMap.set(parsed.slot_id, {
+                target_size: sz && sz >= 2 ? sz : undefined,
+                ride_type: parsed.ride_type || undefined,
+              });
+            }
+          } catch {}
+        }
+      });
+
+      let localSlotMeta: Record<string, { target_size?: number; ride_type?: string }> = {};
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('better_ride_slot_metadata');
+          if (raw) localSlotMeta = JSON.parse(raw);
+        } catch {}
+      }
+
       // Filter out internal system metadata slots
       const slotsData = (rawSlotsData || []).filter(
         (s: any) =>
@@ -306,6 +332,43 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
         });
 
         supabaseRides = slotsData.map((slot: any) => {
+          const slotMeta = slotMetaMap.get(slot.id);
+          const cachedSlotMeta = localSlotMeta[slot.id];
+          const memberWithTarget = membersData.find((m) => m.slot_id === slot.id && m.target_size);
+          let memberNoteTarget: number | null = null;
+          const memberWithNote = membersData.find((m) => m.slot_id === slot.id && m.pickup_note);
+          if (memberWithNote && typeof memberWithNote.pickup_note === 'string') {
+            try {
+              const parsed = JSON.parse(memberWithNote.pickup_note);
+              if (parsed?.target_size && Number(parsed.target_size) >= 2) {
+                memberNoteTarget = Number(parsed.target_size);
+              }
+            } catch {}
+          }
+
+          const finalTargetSize =
+            (slot.target_size && Number(slot.target_size) >= 2 ? Number(slot.target_size) : null) ||
+            (slotMeta?.target_size && Number(slotMeta.target_size) >= 2 ? Number(slotMeta.target_size) : null) ||
+            memberNoteTarget ||
+            (memberWithTarget?.target_size && Number(memberWithTarget.target_size) >= 2 ? Number(memberWithTarget.target_size) : null) ||
+            (cachedSlotMeta?.target_size && Number(cachedSlotMeta.target_size) >= 2 ? Number(cachedSlotMeta.target_size) : null) ||
+            4;
+
+          const finalRideType =
+            slot.ride_type ||
+            slotMeta?.ride_type ||
+            cachedSlotMeta?.ride_type ||
+            'auto';
+
+          if (typeof window !== 'undefined') {
+            try {
+              if (localSlotMeta[slot.id]?.target_size !== finalTargetSize) {
+                localSlotMeta[slot.id] = { target_size: finalTargetSize, ride_type: finalRideType };
+                localStorage.setItem('better_ride_slot_metadata', JSON.stringify(localSlotMeta));
+              }
+            } catch {}
+          }
+
           const slotMembers: SlotMember[] = membersData
             .filter((m) => m.slot_id === slot.id)
             .map((m) => {
@@ -374,8 +437,8 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
                 slot_id: m.slot_id,
                 user_id: m.user_id,
                 joined_at: m.joined_at,
-                ride_pref: m.ride_pref || slot.ride_type || 'auto',
-                target_size: slot.target_size || 4,
+                ride_pref: m.ride_pref || finalRideType,
+                target_size: finalTargetSize,
                 pickup_note: 'SRM AP Gate 3',
                 pickup_point: 'SRM AP Gate 3',
                 profile: prof,
@@ -393,8 +456,8 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             departure_date: slot.departure_date,
             start_time: slot.start_time,
             end_time: slot.end_time,
-            target_size: slot.target_size || 4,
-            ride_type: slot.ride_type || 'auto',
+            target_size: finalTargetSize,
+            ride_type: finalRideType,
             pickup_point: 'SRM AP Gate 3',
             created_at: slot.created_at,
             members: slotMembers,
@@ -545,6 +608,33 @@ export async function createAndJoinRide(params: {
         }
         slotRecord = newSlot;
         slotId = newSlot.id;
+
+        // Persist slot metadata record so all clients get target_size and ride_type in real-time
+        try {
+          await supabase.from('time_slots').insert({
+            destination: `__better_ride_slot_meta__:${JSON.stringify({
+              slot_id: slotId,
+              target_size: validTargetSize,
+              ride_type: ridePref,
+              created_at: new Date().toISOString(),
+            })}`,
+            departure_date: '1970-01-03',
+            start_time: '00:00:00',
+            end_time: '00:00:01',
+          });
+        } catch (mErr) {
+          console.warn('Slot metadata broadcast notice:', mErr);
+        }
+
+        // Cache slot metadata in localStorage
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('better_ride_slot_metadata');
+            const metaMap = raw ? JSON.parse(raw) : {};
+            metaMap[slotId] = { target_size: validTargetSize, ride_type: ridePref };
+            localStorage.setItem('better_ride_slot_metadata', JSON.stringify(metaMap));
+          } catch {}
+        }
       }
 
       if (isValidUuid(slotId) && isValidUuid(validUserId)) {
@@ -558,7 +648,20 @@ export async function createAndJoinRide(params: {
         const alreadyIn = currentMembers?.some((m) => m.user_id === validUserId);
 
         if (!alreadyIn) {
-          const maxCapacity = slotRecord?.target_size || validTargetSize;
+          // Check target_size from slotRecord, metadata, or param
+          let maxCapacity = validTargetSize;
+          if (slotRecord?.target_size && Number(slotRecord.target_size) >= 2) {
+            maxCapacity = Number(slotRecord.target_size);
+          } else if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem('better_ride_slot_metadata');
+              if (raw) {
+                const map = JSON.parse(raw);
+                if (map[slotId]?.target_size) maxCapacity = Number(map[slotId].target_size);
+              }
+            } catch {}
+          }
+
           if (currentCount >= maxCapacity) {
             throw new Error(`This ride group is already full (${currentCount}/${maxCapacity} seats filled). Please join another group or start a new one.`);
           }
@@ -566,6 +669,8 @@ export async function createAndJoinRide(params: {
           const memberMetadata = JSON.stringify({
             name: effectiveName,
             avatar: userAvatar || null,
+            target_size: validTargetSize,
+            ride_pref: ridePref,
           });
 
           // Insert member into slot_members
@@ -601,7 +706,13 @@ export async function createAndJoinRide(params: {
       // Re-fetch all rides from Supabase so all client states are updated
       const all = await fetchAllRides(validUserId);
       const updated = all.find((s) => s.id === slotId);
-      if (updated) return updated;
+      if (updated) {
+        if (forceNewGroup || !targetSlotId) {
+          updated.target_size = validTargetSize;
+          updated.ride_type = ridePref;
+        }
+        return updated;
+      }
     } catch (err: any) {
       console.warn('Supabase createAndJoinRide exception:', err);
       throw err;
