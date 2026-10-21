@@ -79,7 +79,7 @@ export async function saveUserToSupabase(profile: Profile): Promise<{ success: b
   const supabase = getSupabase();
   if (supabase) {
     try {
-      // 1. Upsert into public.profiles table (handling both name and display_name columns)
+      // 1. Upsert into public.profiles table (handling both name and display_name columns, plus password for cross-device login)
       try {
         const cleanName = cleanProfile.name || cleanProfile.display_name;
         const { error: errWithBoth } = await supabase.from('profiles').upsert({
@@ -87,6 +87,7 @@ export async function saveUserToSupabase(profile: Profile): Promise<{ success: b
           name: cleanName,
           display_name: cleanName,
           email: cleanProfile.email,
+          password: cleanProfile.password,
           avatar_url: cleanProfile.avatar_url,
           updated_at: cleanProfile.updated_at,
         });
@@ -97,6 +98,7 @@ export async function saveUserToSupabase(profile: Profile): Promise<{ success: b
             id: cleanProfile.id,
             display_name: cleanName,
             email: cleanProfile.email,
+            password: cleanProfile.password,
             avatar_url: cleanProfile.avatar_url,
             updated_at: cleanProfile.updated_at,
           });
@@ -193,22 +195,28 @@ export async function isEmailRegistered(email: string): Promise<boolean> {
 }
 
 /**
- * Find user profile and credentials by email directly in Supabase database
+ * Find user profile and credentials by email directly in Supabase database (cross-device sync)
  */
 export async function findUserByEmail(email: string): Promise<Profile | null> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail) return null;
 
-  // 1. Check local database first (source of truth for updated profile info)
-  const localDb = getLocalDatabaseUsers();
-  if (localDb[cleanEmail]) {
-    return localDb[cleanEmail];
-  }
-
   const supabase = getSupabase();
   if (supabase) {
     try {
-      // 2. Query Supabase database credential store
+      // 1. Query Supabase profiles table first (authoritative cross-device profile store)
+      const { data: prof, error: profErr } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+
+      if (!profErr && prof) {
+        saveToLocalDatabaseUsers(prof as Profile);
+        return prof as Profile;
+      }
+
+      // 2. Query Supabase database credential store (time_slots meta)
       const { data: slots, error: slotsErr } = await supabase
         .from('time_slots')
         .select('id, destination')
@@ -221,28 +229,21 @@ export async function findUserByEmail(email: string): Promise<Profile | null> {
             const rawJson = slot.destination.replace(USER_META_PREFIX, '');
             const parsed = JSON.parse(rawJson) as Profile;
             if (parsed.email?.toLowerCase() === cleanEmail) {
-              // Cache in local storage for fast access
               saveToLocalDatabaseUsers(parsed);
               return parsed;
             }
           } catch {}
         }
       }
-
-      // 3. Query Supabase profiles table
-      const { data: prof, error: profErr } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('email', cleanEmail)
-        .maybeSingle();
-
-      if (!profErr && prof) {
-        saveToLocalDatabaseUsers(prof as Profile);
-        return prof as Profile;
-      }
     } catch (err) {
       console.warn('findUserByEmail Supabase notice:', err);
     }
+  }
+
+  // 3. Fallback to local database cache
+  const localDb = getLocalDatabaseUsers();
+  if (localDb[cleanEmail]) {
+    return localDb[cleanEmail];
   }
 
   return null;
