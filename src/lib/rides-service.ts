@@ -464,6 +464,14 @@ export async function fetchAllRides(currentUserId?: string): Promise<SlotWithDet
             memberCount: slotMembers.length,
             isUserJoined,
           };
+        }).filter((slot) => {
+          if (slot.members.length === 0) {
+            if (supabase) {
+              supabase.from('time_slots').delete().eq('id', slot.id).then(() => {});
+            }
+            return false;
+          }
+          return true;
         });
       }
     } catch (err) {
@@ -829,6 +837,32 @@ export async function leaveRideInSupabase(
           .eq('user_id', validUserId);
       } catch {}
 
+      // Check remaining members in slot
+      const { data: remMem } = await supabase
+        .from('slot_members')
+        .select('id')
+        .eq('slot_id', validSlotId);
+
+      const { data: remRideMem } = await supabase
+        .from('ride_members')
+        .select('id')
+        .eq('slot_id', validSlotId);
+
+      const totalRem = (remMem?.length || 0) + (remRideMem?.length || 0);
+
+      if (totalRem === 0) {
+        await supabase
+          .from('time_slots')
+          .delete()
+          .eq('id', validSlotId);
+        if (validSlotId !== slotId) {
+          await supabase
+            .from('time_slots')
+            .delete()
+            .eq('id', slotId);
+        }
+      }
+
       // Clean up any metadata in time_slots
       const { data: memberSlots } = await supabase
         .from('time_slots')
@@ -856,8 +890,9 @@ export async function leaveRideInSupabase(
 
   // Update local store
   const localRides = loadLocalRides();
-  const ride = localRides.find((s) => s.id === slotId || s.id === validSlotId);
-  if (ride) {
+  const rideIndex = localRides.findIndex((s) => s.id === slotId || s.id === validSlotId);
+  if (rideIndex >= 0) {
+    const ride = localRides[rideIndex];
     ride.members = ride.members.filter(
       (m) =>
         m.user_id !== userId &&
@@ -865,6 +900,9 @@ export async function leaveRideInSupabase(
     );
     ride.memberCount = ride.members.length;
     ride.isUserJoined = false;
+    if (ride.members.length === 0) {
+      localRides.splice(rideIndex, 1);
+    }
     saveLocalRides(localRides);
   }
 

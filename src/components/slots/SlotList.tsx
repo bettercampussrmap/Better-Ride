@@ -90,8 +90,9 @@ export const SlotList: React.FC<SlotListProps> = ({
           .select('id, slot_id, user_id, joined_at, target_size, ride_pref, pickup_note, profile:profiles(id, display_name, email, avatar_url)')
           .in('slot_id', slotIds);
 
+        let activeMembers: any[] = [];
         if (!membersErr && membersData) {
-          setMemberships((membersData as any) || []);
+          activeMembers = membersData;
         } else {
           // Fallback simple select without nested profile
           const { data: simpleData } = await supabase
@@ -99,11 +100,24 @@ export const SlotList: React.FC<SlotListProps> = ({
             .select('id, slot_id, user_id, joined_at, target_size, ride_pref, pickup_note')
             .in('slot_id', slotIds);
           if (simpleData) {
-            setMemberships((simpleData as any) || []);
+            activeMembers = simpleData;
           }
         }
+
+        const validSlots = (slotsData || []).filter((slot) => {
+          const hasMembers = activeMembers.some((m: any) => m.slot_id === slot.id);
+          if (!hasMembers) {
+            supabase.from('time_slots').delete().eq('id', slot.id).then(() => {});
+            return false;
+          }
+          return true;
+        });
+
+        setDbSlots(validSlots);
+        setMemberships(activeMembers);
       } catch (memError) {
         console.warn('Notice loading slot members:', memError);
+        setDbSlots(slotsData || []);
       }
     } catch (err: any) {
       console.error('Unexpected error loading slots:', err);
